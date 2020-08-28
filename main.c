@@ -52,6 +52,150 @@ static char * read_full_file(const char * filename) {
     return fileMemory;
 }
 
+struct Slice {
+	const char * ptr;	
+	size_t size;
+};
+
+const char * readBlob(const char * ptr, uint32_t * len) {
+	if ((ptr[0] & 0xE0) == 0xC0) {
+		*len = ((*(uint32_t*)ptr) & 0x1FFFFFFF);
+		ptr += 3;
+	} else if ((ptr[0] & 0xC0) == 0x80) {
+		*len = ((*(uint16_t*)ptr) & 0x3FFF);
+		ptr += 2;
+	} else {
+		*len = ((unsigned char)ptr[0] & 0x7F);
+		ptr += 1;
+	}
+	return ptr;
+}
+
+struct Heap {
+	int count;
+	int cap;
+	const char ** values;
+};
+
+void heap_append(struct Heap * heap, const char * ptr)
+{
+	if (heap->count >= heap->cap) {
+		heap->cap += 64;
+		if (heap->values != 0) {
+			heap->values = (const char **)realloc(heap->values, sizeof(void*) * heap->cap);
+		} else {
+			heap->values = (const char **)malloc(sizeof(void*) * heap->cap);
+		}
+
+		memset(heap->values + heap->count, 0, sizeof(void*) * (heap->cap - heap->count));
+	}
+
+	heap->values[heap->count] = ptr;
+	heap->count++;
+}
+
+void heap_parse(struct Heap * heap, const char * ptr, size_t len, const char * (*next)(const char * ptr)) {
+	const char * begin = ptr;
+	const char * end = ptr + len;
+
+	int i;
+	const char * ite;
+	for(i = 0, ite = begin; ite < end; i++) {
+		heap_append(heap, ite);
+
+		ite = next(ite);
+	}
+}
+
+static const char * next_string(const char * ptr)
+{
+	return ptr + strlen(ptr) + 1;
+}
+
+static const char * next_blob(const char * ptr)
+{
+	uint32_t len;
+	ptr = readBlob(ptr, &len);
+	return ptr + len;
+}
+
+static const char * next_guid(const char * ptr)
+{
+	return ptr += 16;
+}
+
+static size_t convertUnicodeToUtf8(const char * ptr, size_t len, char * b) {
+	size_t rlen = len / 2 * 2;
+
+	const char * begin = b;
+
+	for(size_t i = 0; i < rlen; i += 2) {
+		uint16_t c = *(uint16_t*)(ptr + i);
+
+		if (c<0x80) *b++=c;
+		else if (c<0x800) *b++=192+c/64, *b++=128+c%64;
+		else if (c-0xd800u<0x800) assert(0);
+		else if (c<0x10000) *b++=224+c/4096, *b++=128+c/64%64, *b++=128+c%64;
+		else if (c<0x110000) *b++=240+c/262144, *b++=128+c/4096%64, *b++=128+c/64%64, *b++=128+c%64;
+		else assert(0);
+	}
+
+	*b = 0;
+
+	return b - begin;
+}
+
+static void dumpHex(const char * ptr, size_t n, const char * sep) {
+	for (size_t i = 0; i < n; i++) {
+		printf("%s%02X", (i != 0) ? sep : "", (unsigned char)ptr[i]);
+	}
+	printf("\n");
+}
+
+static void dumpStringHeap(struct Heap * heap)
+{
+	for (int i = 0; i < heap->count; i++) {
+		printf("%d: [%s]\n", i, heap->values[i]);
+	}
+}
+
+static void dumpGUIDHeap(struct Heap * heap)
+{
+	for (int i = 0; i < heap->count; i++) {
+		printf("%d:", i);
+		dumpHex(heap->values[i], 16, "-");
+	}
+}
+
+static void dumpBlobHeap(struct Heap * heap)
+{
+	for (int i = 0; i < heap->count; i++) {
+		const char * ptr = heap->values[i];
+
+		uint32_t len;
+		ptr = readBlob(ptr, &len);
+
+		printf("%d:", i);
+		dumpHex(ptr, len, " ");
+	}
+
+}
+
+static void dumpUnicodeStringHeap(struct Heap * heap)
+{
+	for (int i = 0; i < heap->count; i++) {
+		const char * ptr = heap->values[i];
+
+		uint32_t len;
+		ptr = readBlob(ptr, &len);
+
+		char b[256] = {0};
+		convertUnicodeToUtf8(ptr, len, b);
+
+		printf("%d: [%s]\n", i, b);
+	}
+}
+
 static void readPE(const char * filename) {
     char ptr[4] = {0x80, 0x0, 0x0, 0x0};
     assert((*(uint32_t*)ptr) == 128);
@@ -166,6 +310,8 @@ static void readPE(const char * filename) {
 			uint64_t MetaDataVirtualAddress = header_get_field_u64(&CLRHeader, "MetaDataVirtualAddress");
 			uint64_t MetaDataSize = header_get_field_u64(&CLRHeader, "MetaDataSize");
 
+			assert(MetaDataVirtualAddress >= VirtualAddress && MetaDataVirtualAddress < VirtualAddress + VirtualSize);
+
 			ptr = fileMemory + PointerToRawData + MetaDataVirtualAddress - VirtualAddress;
 
 			const char * ptrStartOfTheMetadataRoot = ptr;
@@ -182,6 +328,14 @@ static void readPE(const char * filename) {
             header_dump(&MetadataRoot_P2, "MetadataRoot_P2");
 
 			uint64_t Streams = header_get_field_u64(&MetadataRoot_P2, "Streams");
+
+			struct Heap stringHeap = {0, 0, 0};
+			struct Heap blobHeap = {0, 0, 0};
+			struct Heap guidHeap = {0, 0, 0};
+			struct Heap usHeap = {0, 0, 0};
+
+			struct Slice tableStreamSlice = {0, 0};
+
 			for (int j = 0; j < Streams; j++) {
 				struct Header StreamHeader;
 				ptr = header_init(&StreamHeader, TStreamHeader, ptr);
@@ -197,10 +351,31 @@ static void readPE(const char * filename) {
 				}
 
 				ptr += nameLen;
+
+				if (strcmp(Name, "#Strings") == 0) {
+					heap_parse(&stringHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_string);
+				} else if (strcmp(Name, "#Blob") == 0) {
+					heap_parse(&blobHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+				} else if (strcmp(Name, "#GUID") == 0) {
+					heap_parse(&guidHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_guid);
+				} else if (strcmp(Name, "#~") == 0) {
+					tableStreamSlice.ptr = ptrStartOfTheMetadataRoot + Offset;
+					tableStreamSlice.size = Size;
+				} else if (strcmp(Name, "#US") == 0) {
+					heap_parse(&usHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+				}
 			}
+
+			if (tableStreamSlice.size > 0) {
+
+			}
+
+			dumpStringHeap(&stringHeap);
+			dumpBlobHeap(&blobHeap);
+			dumpGUIDHeap(&guidHeap);
+			dumpUnicodeStringHeap(&usHeap);
         }
     }
 
     free(fileMemory);
 }
-

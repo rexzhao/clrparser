@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "header_pe.h"
+#include "header_clr.h"
 
 
 static void readPE(const char * filename);
@@ -158,13 +159,45 @@ static void readPE(const char * filename) {
         if (VirtualAddress <= CLRRuntimeHeaderVirtualAddress && VirtualAddress + VirtualSize >= CLRRuntimeHeaderVirtualAddress) {
             printf("Find CLR Header %s\n", header_get_field_str(&SectionTable, "Name"));
             const char * ptr = fileMemory + PointerToRawData + CLRRuntimeHeaderVirtualAddress - VirtualAddress;
-            struct Header CLIHeader;
-            header_init(&CLIHeader, TCLIHeader, ptr);
-            header_dump(&CLIHeader, "CLIHeader");
+            struct Header CLRHeader;
+            header_init(&CLRHeader, TCLRHeader, ptr);
+            header_dump(&CLRHeader, "CLRHeader");
 
-			uint64_t MetaDataVirtualAddress = header_get_field_u64(&CLIHeader, "MetaDataVirtualAddress");
-			uint64_t MetaDataSize = header_get_field_u64(&CLIHeader, "MetaDataSize");
+			uint64_t MetaDataVirtualAddress = header_get_field_u64(&CLRHeader, "MetaDataVirtualAddress");
+			uint64_t MetaDataSize = header_get_field_u64(&CLRHeader, "MetaDataSize");
 
+			ptr = fileMemory + PointerToRawData + MetaDataVirtualAddress - VirtualAddress;
+
+			const char * ptrStartOfTheMetadataRoot = ptr;
+
+			struct Header MetadataRoot_P1;
+			ptr = header_init(&MetadataRoot_P1, TMetadataRoot_P1, ptr);
+			header_dump(&MetadataRoot_P1, "MetadataRoot_P1");
+
+			uint64_t Length = header_get_field_u64(&MetadataRoot_P1, "Length");
+			ptr += Length;
+
+			struct Header MetadataRoot_P2;
+            ptr = header_init(&MetadataRoot_P2, TMetadataRoot_P2, ptr);
+            header_dump(&MetadataRoot_P2, "MetadataRoot_P2");
+
+			uint64_t Streams = header_get_field_u64(&MetadataRoot_P2, "Streams");
+			for (int j = 0; j < Streams; j++) {
+				struct Header StreamHeader;
+				ptr = header_init(&StreamHeader, TStreamHeader, ptr);
+				header_dump(&StreamHeader, "StreamHeader");
+
+				uint64_t Offset = header_get_field_u64(&StreamHeader, "Offset");
+				uint64_t Size = header_get_field_u64(&StreamHeader, "Size");
+				const char * Name = header_get_field_str(&StreamHeader, "Name");
+
+				int nameLen = strlen(Name) + 1;
+				if (nameLen % 4 != 0) {
+					nameLen = nameLen / 4 * 4 + 4;
+				}
+
+				ptr += nameLen;
+			}
         }
     }
 

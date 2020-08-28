@@ -2,17 +2,17 @@ OBJ=$(patsubst %.c, %.o, $(wildcard *.c))
 
 BIN=cclr
 
-all : ${BIN}
+all : bin/${BIN}
 
-${BIN} : ${OBJ}
+bin/${BIN} : ${OBJ}
 	cc -g -o $@ $^
 
 %.o : %.c
 	cc -g -c -o $@ $<
 
 clean : 
-	rm -vf ${BIN} ${OBJ}
+	rm -vf bin/${BIN} ${OBJ}
 
 run :
-	./${BIN} /mnt/f/cli/cli/bin/Debug/cli.exe
+	bin/${BIN} /mnt/f/cli/cli/bin/Debug/cli.exe
 

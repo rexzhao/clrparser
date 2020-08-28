@@ -172,32 +172,4 @@ const struct FieldInfo TSectionTable [] = {
     {0, 0, 0},
 };
 
-const struct FieldInfo TCLIHeader [] = {
-    {'u', 4, "Cb"}, // Size of the header in bytes
-
-    {'u', 2, "MajorRuntimeVersion"}, // The minimum version of the runtime required to run this program, currently 2.
-    {'u', 2, "MinorRuntimeVersion"}, // The minor portion of the version, currently 0.
-
-    {'x', 4, "MetaDataVirtualAddress"}, // RVA and size of the physical metadata (§II.24).
-    {'x', 4, "MetaDataSize"},           // RVA and size of the physical metadata (§II.24).
-
-    {'x', 4, "Flags"}, // Flags describing this runtime image. (§II.25.3.3.1).
-    {'x', 4, "EntryPointToken"}, // Token for the MethodDef or File of the entry point for the image
-
-    {'x', 4, "ResourcesVirtualAddress"}, // RVA and size of implementation-specific resources.
-    {'x', 4, "ResourcesSize"},           // RVA and size of implementation-specific resources.
-
-    {'x', 4, "StrongNameSignatureVirtualAddress"}, // RVA of the hash data for this PE file used by the CLI loader for binding and versioning
-    {'x', 4, "StrongNameSignatureSize"},           // RVA of the hash data for this PE file used by the CLI loader for binding and versioning
-
-    {'u', 8, "CodeManagerTable"}, // Always 0 (§II.24.1).
-
-    {'x', 4, "VTableFixupsVirtualAddress"}, // RVA of an array of locations in the file that contain an array of function pointers (e.g., vtable slots), see below.
-    {'x', 4, "VTableFixupsSize"},           // RVA of an array of locations in the file that contain an array of function pointers (e.g., vtable slots), see below.
-    {'u', 8, "ExportAddressTableJumps"}, //  Always 0 (§II.24.1).
-    {'u', 8, "ManagedNativeHeader"}, // Always 0 (§II.24.1)
-    {0, 0, 0},
-};
-
-
 #endif

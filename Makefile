@@ -14,5 +14,5 @@ clean :
 	rm -vf bin/${BIN} ${OBJ}
 
 run :
-	bin/${BIN} /mnt/f/cli/cli/bin/Release/cli.exe
+	bin/${BIN} cli.exe
 

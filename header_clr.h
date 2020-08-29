@@ -58,4 +58,18 @@ const struct FieldInfo TStreamHeader [] = {
 	{0, 0, 0},
 };
 
+const struct FieldInfo TMetadataTableHeader [] = {
+    {'u', 4, "Reserved"}, // Reserved, always 0 (§II.24.1).
+    {'u', 1, "MajorVersion"}, // Major version of table schemata; shall be 2 (§II.24.1).
+    {'u', 1, "MinorVersion"}, // Minor version of table schemata; shall be 0 (§II.24.1).
+    {'u', 1, "HeapSizes"}, // Bit vector for heap sizes.
+    {'u', 1, "Reserved"}, // Reserved, always 1 (§II.24.1).
+    {'x', 8, "Valid"},  // Bit vector of present tables, let n be the number of bits that are 1.
+    {'x', 8, "Sorted"}, // Bit vector of sorted tables.
+    // {'u', 0, "Rows"},             // Array of n 4-byte unsigned integers indicating the number of rows for each present table.
+    // 24+4*n Tables The sequence of physical tables.
+    {0, 0, 0},
+};
+
+
 #endif

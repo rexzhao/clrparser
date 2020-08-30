@@ -196,7 +196,16 @@ static void dumpUnicodeStringHeap(struct Heap * heap)
 	}
 }
 
-static void parseMetatable(const char * ptr, size_t n, struct Heap * stringHeap, struct Heap * userStringHeap);
+struct Context {
+	struct Slice stringHeap;
+	struct Slice guidHeap;
+	struct Slice blobHeap;
+	struct Slice unicodeHeap;
+
+	int rows[64];
+};
+
+static void parseMetatable(const char * ptr, size_t n, struct Context * context);
 
 static void readPE(const char * filename) {
 	char ptr[4] = {0x80, 0x0, 0x0, 0x0};
@@ -331,10 +340,15 @@ static void readPE(const char * filename) {
 
 			uint64_t Streams = header_get_field_u64(&MetadataRoot_P2, "Streams");
 
+			/*
 			struct Heap stringHeap = {0, 0, 0};
 			struct Heap blobHeap = {0, 0, 0};
 			struct Heap guidHeap = {0, 0, 0};
 			struct Heap usHeap = {0, 0, 0};
+			*/
+
+			struct Context context;
+			memset(&context, 0, sizeof(struct Context));
 
 			struct Slice tableStreamSlice = {0, 0};
 
@@ -355,21 +369,29 @@ static void readPE(const char * filename) {
 				ptr += nameLen;
 
 				if (strcmp(Name, "#Strings") == 0) {
-					heap_parse(&stringHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_string);
+					// heap_parse(&stringHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_string);
+					context.stringHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+					context.stringHeap.size = Size;
 				} else if (strcmp(Name, "#Blob") == 0) {
-					heap_parse(&blobHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+					// heap_parse(&blobHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+					context.blobHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+					context.blobHeap.size = Size;
 				} else if (strcmp(Name, "#GUID") == 0) {
-					heap_parse(&guidHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_guid);
+					// heap_parse(&guidHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_guid);
+					context.guidHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+					context.guidHeap.size = Size;
 				} else if (strcmp(Name, "#~") == 0) {
 					tableStreamSlice.ptr = ptrStartOfTheMetadataRoot + Offset;
 					tableStreamSlice.size = Size;
 				} else if (strcmp(Name, "#US") == 0) {
-					heap_parse(&usHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+					// heap_parse(&usHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+					context.unicodeHeap.ptr =  ptrStartOfTheMetadataRoot + Offset;
+					context.unicodeHeap.size = Size;
 				}
 			}
 
 			if (tableStreamSlice.size > 0) {
-					parseMetatable(tableStreamSlice.ptr, tableStreamSlice.size, &stringHeap, &usHeap);
+					parseMetatable(tableStreamSlice.ptr, tableStreamSlice.size, &context);
 			}
 
 			// dumpStringHeap(&stringHeap);
@@ -393,7 +415,141 @@ static int calc_bit(const char c) {
 	return n;
 }
 
-static void parseMetatable(const char * ptr, size_t size, struct Heap * stringHeap, struct Heap * userStringHeap)
+static int is_bit_set(const char * ptr, int n) {
+	int pos = n / 8;
+	int bit = n % 8;
+	return (ptr[pos] & (1 << bit));
+}
+
+
+#define string_index(type, heapSizes, name) {type,  (heapSizes & 0x01) ? 4 : 2, name}
+#define guid_index(type, heapSizes, name) {type,  (heapSizes & 0x02) ? 4 : 2, name}
+#define blob_index(type, heapSizes, name) {type,  (heapSizes & 0x04) ? 4 : 2, name}
+
+enum TableType {
+	Module                 = 0x00,
+	TypeRef                = 0x01,
+	TypeDef                = 0x02,
+	Field                  = 0x04,
+	MethodDef              = 0x06,
+	Param                  = 0x08,
+	InterfaceImpl          = 0x09,
+	MemberRef              = 0x0A,
+	Constant               = 0x0B,
+	CustomAttribute        = 0x0C,
+	FieldMarshal           = 0x0D,
+	DeclSecurity           = 0x0E,
+	FieldLayout            = 0x10,
+	StandAloneSig          = 0x11,
+	EventMap               = 0x12,
+	Event                  = 0x14,
+	PropertyMap            = 0x15,
+	Property               = 0x17,
+	MethodSemantics        = 0x18,
+	MethodImpl             = 0x19,
+	ModuleRef              = 0x1A,
+	TypeSpec               = 0x1B,
+	ImplMap                = 0x1C,
+	FieldRVA               = 0x1D,
+	Assembly               = 0x20,
+	AssemblyOS             = 0x22,
+	AssemblyProcesser      = 0x21,
+	AssemblyRef            = 0x23,
+	AssemblyRefProcessor   = 0x24,
+	AssemblyRefOS          = 0x25,
+	File                   = 0x26,
+	ExportedType           = 0x27,
+	ManifestResource       = 0x28,
+	NestedClass            = 0x29,
+	GenericParam           = 0x2A,
+	MethodSpec             = 0x2B,
+	GenericParamConstraint = 0x2C,
+};
+
+static void dump_string(struct Context * context, struct Header * cell, const char * field)
+{
+	// header_dump(cell, "xxx");
+	uint64_t index = header_get_field_u64(cell, field);
+
+	const char * value = "null";
+	if (index >= 0 || index < context->stringHeap.size) {
+		value = context->stringHeap.ptr + index;
+	}
+	printf("%s %s\n", field, value);
+}
+
+static const char * readModuleTable(const char * ptr, size_t row, int heapSizes, struct Context * context) 
+{
+	struct FieldInfo fiels[] = {
+		{'u', 2, "Generation"}, // (a 2-byte value, reserved, shall be zero)
+		string_index('u', heapSizes, "Name"),
+		guid_index  ('u', heapSizes, "Mvid"),
+		guid_index  ('u', heapSizes, "EncId"),
+		guid_index  ('u', heapSizes, "EncBaseId"),
+		{0, 0, 0},
+	};
+
+	printf("-- Moduel Table start --\n");
+	for (int i = 0; i < row; i++) {
+		struct Header cell;
+		ptr = header_init(&cell, fiels, ptr);
+
+		dump_string(context, &cell, "Name");
+		printf("\n");
+	}
+
+	printf("-- Moduel Table end --\n");
+
+	return ptr;
+}
+
+
+static const char * readTypeRefTable(const char * ptr, size_t row, int heapSizes, struct Context * context) 
+{
+	struct FieldInfo fiels[] = {
+		{'x', 2, "ResolutionScope"},
+		string_index('u', heapSizes, "TypeName"),
+		string_index('u', heapSizes, "TypeNamespace"),
+		{0, 0, 0},
+	};
+
+	printf("-- TypeRef Table start --\n");
+	for (int i = 0; i < row; i++) {
+		struct Header cell;
+		ptr = header_init(&cell, fiels, ptr);
+		// header_dump(&cell, "TypeRef Table");
+
+		uint64_t ResolutionScope = header_get_field_u64(&cell, "ResolutionScope");
+		// Module 0
+		// ModuleRef 1
+		// AssemblyRef 2
+		// TypeRef 3
+		int ResolutionScopeType = ResolutionScope & 0x03;
+		int ResolutionScopeIndex = ResolutionScope >> 2;
+
+		const char * ResolutionScopeTypeName [] = {
+			"Module",
+			"ModuleRef",
+			"AssemblyRef",
+			"TypeRef",
+		};
+
+		printf("ResolutionScope %s, %d\n", ResolutionScopeTypeName[ResolutionScopeType], ResolutionScopeIndex);
+
+		// dump_string(context, &cell, "ResolutionScope");
+		dump_string(context, &cell, "TypeNamespace");
+		dump_string(context, &cell, "TypeName");
+
+		printf("\n");
+	}
+
+	printf("-- TypeRef Table end --\n");
+
+	return ptr;
+}
+
+
+static void parseMetatable(const char * ptr, size_t size, struct Context * context)
 {
 	struct Header StreamTableheader;
 	ptr = header_init(&StreamTableheader, TMetadataTableHeader, ptr);
@@ -405,19 +561,29 @@ static void parseMetatable(const char * ptr, size_t size, struct Heap * stringHe
 	int HeapSizes = header_get_field_u64(&StreamTableheader, "HeapSizes");
 
 	int tableCount = 0;
-	for (int i = 0; i < 8; i++) {
-		tableCount += calc_bit(Valid[i]);
+
+	uint32_t * rows = (uint32_t*)ptr;
+
+	for (int i = 0; i < 64; i++) {
+		if (is_bit_set(Valid, i)) {
+			context->rows[i] = *(rows++);
+			tableCount ++;
+		}
 	};
 
 	printf("Valid count %d, HeapSizes %d\n", tableCount, HeapSizes);
 
-	uint32_t * rows = (uint32_t*)ptr;
 	ptr += 4 * tableCount;
 
-	for (int i = 0; i < tableCount; i++) {
-		uint32_t row = rows[i];
-
-		printf("Rows %d, count %u\n", i, row);
-	
+	for (int i = 0; i < 64; i++) {
+		if (is_bit_set(Valid, i)) {
+			printf("table 0x%x, rows %u %p\n", i, context->rows[i], ptr);
+			switch(i) {
+				case Module: ptr = readModuleTable(ptr, context->rows[Module], HeapSizes, context); break;
+				case TypeRef: ptr = readTypeRefTable(ptr, context->rows[TypeRef], HeapSizes, context); break;
+				default:
+					break;
+			}
+		}
 	}
 }

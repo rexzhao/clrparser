@@ -12,7 +12,7 @@ static size_t get_field_size(const struct FieldInfo * f) {
     return f->size;
 }
 
-static size_t table_get_cell_size(struct Table * table) {
+static size_t calc_cell_size(struct Table * table) {
     if (table == 0 || table->fields == 0) {
         return 0;
     }
@@ -39,7 +39,7 @@ static size_t table_get_field_size(struct Table * table, const char * field) {
 
 const char * table_init(struct Table * table, const struct FieldInfo * fields, const char * ptr, int rowCount) {
     table->fields = fields; 
-    table->cellSize = table_get_cell_size(table);
+    table->cellSize = calc_cell_size(table);
 
     table->ptr = ptr;
 	table->rowCount = rowCount;

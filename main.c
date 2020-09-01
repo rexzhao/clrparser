@@ -470,6 +470,7 @@ enum TableType {
 	MethodSpec             = 0x2B,
 	GenericParamConstraint = 0x2C,
 
+	Permission = 0x38, // TODO:
 	NotUsed = 0x39,
 };
 
@@ -841,8 +842,19 @@ static struct FieldInfo * get_table_fields(struct Context * context, int i)
 		B('u', "Signature");
 		break;
 	case Constant:
+		F('u', "Type", 2); // (a 1-byte constant, followed by a 1-byte padding zero); see §II.23.1.16 . 
+		N('u', "Parent", HasConstant); //
+		B('u', "Value");
+		break;
 	case CustomAttribute:
+		N('u', "Parent", HasCustomAttribute);
+		N('u', "Type", CustomAttributeType);
+		B('u', "Value");
+		break;
 	case FieldMarshal:
+		N('u', "Parent", HasFieldMarshall);
+		B('u', "NativeType");
+		break;
 	case DeclSecurity:
 	case FieldLayout:
 	case StandAloneSig:
@@ -856,10 +868,32 @@ static struct FieldInfo * get_table_fields(struct Context * context, int i)
 	case TypeSpec:
 	case ImplMap:
 	case FieldRVA:
+		break;
 	case Assembly:
+		F('u', "HashAlgId", 4); // (a 4-byte constant of type AssemblyHashAlgorithm, §II.23.1.1)
+		F('u', "MajorVersion", 2);
+		F('u', "MinorVersion", 2);
+		F('u', "BuildNumber", 2);
+		F('u', "RevisionNumber", 2); 
+		F('x', "Flags", 4); // (a 4-byte bitmask of type AssemblyFlags, §II.23.1.2)
+		B('u', "PublicKey");
+		S('u', "Name");
+		S('u', "Culture");
+		break;
 	case AssemblyOS:
 	case AssemblyProcesser:
+		break;
 	case AssemblyRef:
+		F('u', "MajorVersion", 2);
+		F('u', "MinorVersion", 2);
+		F('u', "BuildNumber", 2);
+		F('u', "RevisionNumber", 2); 
+		F('u', "Flags", 4); // (a 4-byte bitmask of type AssemblyFlags, §II.23.1.2)
+		B('u', "PublicKeyOrToken");  // (an index into the Blob heap, indicating the public key or token that identifies the author of this Assembly)
+		S('u', "Name"); 
+		S('u', "Culture");
+		B('u', "HashValue");
+		break;
 	case AssemblyRefProcessor:
 	case AssemblyRefOS:
 	case File:
@@ -870,10 +904,14 @@ static struct FieldInfo * get_table_fields(struct Context * context, int i)
 	case MethodSpec:
 	case GenericParamConstraint:
 	default:
-		fprintf(stderr, "unknown table type %d\n", i);
-		exit(-1);
 		break;
 	}
+
+	if (field == ret) {
+		fprintf(stderr, "unknown table type 0x%02x\n", i);
+		exit(-1);
+	}
+
 
 	F(0, 0, 0); // (a 2-byte value, reserved, shall be zero)
 

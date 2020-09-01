@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 #include "header_pe.h"
 #include "header_clr.h"
@@ -468,6 +469,8 @@ enum TableType {
 	GenericParam           = 0x2A,
 	MethodSpec             = 0x2B,
 	GenericParamConstraint = 0x2C,
+
+	NotUsed = 0x39,
 };
 
 static const char * get_string(struct Context * context, struct Table * table, int row, const char * field, const char * def)
@@ -493,7 +496,6 @@ static void dumpModule(struct Context * context)
 	printf("\n");
 }
 
-/*
 static const char * get_Module_name(struct Context * context, int index, char * out)
 {
 	struct Table * table = context->tables + Module;
@@ -523,34 +525,101 @@ static const char * get_TypeRef_name(struct Context * context, int index, char *
 	}
 	return out;
 }
-*/
 
-static const char * get_ResolutionScope_name(struct Context * context, int ResolutionScope, char * out)
+static const char * get_TypeDef_name(struct Context * context, int index, char * out)
 {
-	const char * ResolutionScopeTypeName [] = {
-		"Module",
-		"ModuleRef",
-		"AssemblyRef",
-		"TypeRef",
-	};
+	struct Table * table = context->tables + TypeDef;
 
-	int ResolutionScopeType = ResolutionScope & 0x03;
-	int ResolutionScopeIndex = ResolutionScope >> 2;
-
-#if 1
-	sprintf(out, "[%s:%d]", ResolutionScopeTypeName[ResolutionScopeType], ResolutionScopeIndex);
-#else
-	switch(ResolutionScopeType) {
-	case 0: get_Module_name(context, ResolutionScopeIndex, out); break;
-	case 3: get_TypeRef_name(context, ResolutionScopeIndex, out); break;
-
-	case 1: 
-	case 2: 
-	default:
-			sprintf(out, "[%s:%d]", ResolutionScopeTypeName[ResolutionScopeType], ResolutionScopeIndex); break;
-			break;
+	if (index <= 0 || index > table->rowCount) {
+		out[0] = 0;
+	} else {
+		const char * TypeNamespace = get_string(context, table, index - 1, "TypeNamespace", 0);
+		const char * TypeName = get_string(context, table, index - 1, "TypeName", "nil");
+		if (TypeNamespace == 0 || TypeNamespace[0] == 0) {
+			sprintf(out, "%s", TypeName);
+		} else {
+			sprintf(out, "%s.%s", TypeNamespace, TypeName);
+		}
 	}
-#endif
+	return out;
+}
+
+#define get_X_name(T, value, out) sprintf(out, #T ":%lu", value); return out
+
+#define HasCustomAttribute \
+	MethodDef, Field, TypeRef, TypeDef, Param, InterfaceImpl, MemberRef, \
+	Module, Permission, Property, Event, StandAloneSig, ModuleRef, TypeSpec, \
+	Assembly, AssemblyRef, File, ExportedType, ManifestResource, \
+	GenericParam, GenericParamConstraint, MethodSpec
+
+#define TypeDefOrRef        TypeDef, TypeRef, TypeSpec 
+#define HasConstant         Field, Param, Property
+#define HasFieldMarshall    Field, Param
+#define HasDeclSecurity     TypeDef, MethodDef, Assembly
+#define MemberRefParent     TypeDef, TypeRef, ModuleRef, MethodDef, TypeSpec
+#define HasSemantics        Event, Property
+#define MethodDefOrRef      MethodDef, MemberRef
+#define MemberForwarded     Field, MethodDef
+#define Implementation      File, AssemblyRef, ExportedType
+#define CustomAttributeType NotUsed, NotUsed, MethodDef, MemberRef, NotUsed
+#define ResolutionScope     Module, ModuleRef, AssemblyRef, TypeRef
+#define TypeOrMethodDef     TypeDef, MethodDef
+
+static const char * get_ResolutionScope_name(struct Context * context, uint64_t value, char * out)
+{
+	uint64_t bit = value & 0x3;	
+	value >>= 2;
+
+	struct Table * table = 0;
+
+	switch(bit) {
+		case 0: return get_Module_name(context, value, out);
+		case 1: get_X_name(ModuleRef, value, out);
+		case 2: get_X_name(AssemblyRef, value, out);
+		case 3: return get_TypeRef_name(context, value, out);
+	}
+
+	assert(0);
+
+	return out;
+}
+
+
+
+static const char * get_TypeDefOrRef_name(struct Context * context, uint64_t value, char * out)
+{
+	uint64_t bit = value & 0x3;	
+	value >>= 2;
+
+	struct Table * table = 0;
+
+	switch(bit) {
+		case 0: return get_TypeDef_name(context, value, out);
+		case 1: return get_TypeRef_name(context, value, out);
+		case 2: get_X_name(TypeSpec, value, out); // sprintf(out, "[TypeSpec] %lu", value); return out; // get_TypeSpec_name(context, value, out);
+	}
+
+	assert(0);
+
+	return out;
+}
+
+static const char * get_MemberRefParent_name(struct Context * context, uint64_t value, char * out)
+{
+	uint64_t bit = value & 0x7;	
+	value >>= 3;
+
+	struct Table * table = 0;
+
+	switch(bit) {
+		case 0: return get_TypeDef_name(context, value, out);
+		case 1: return get_TypeRef_name(context, value, out);
+		case 2: get_X_name(TypeSpec, value, out);
+		case 3: get_X_name(MethodDef, value, out); // table = context->tables + MethodDef; break;
+		case 4: get_X_name(TypeSpec, value, out); // table = context->tables + TypeSpec; break;
+	}
+
+	assert(table && value > 0 && value <= table->rowCount);
 
 	return out;
 }
@@ -561,10 +630,10 @@ static void dumpTypeRef(struct Context * context)
 
 	printf("-- TypeRef Table\n");
 	for (int i = 0; i < table->rowCount; i++) {
-		uint64_t ResolutionScope = table_get_field_u64(table, i, "ResolutionScope");
+		uint64_t resolutionScope = table_get_field_u64(table, i, "ResolutionScope");
 
 		char ResolutionScopeName[256];
-		get_ResolutionScope_name(context, ResolutionScope, ResolutionScopeName);
+		get_ResolutionScope_name(context, resolutionScope, ResolutionScopeName);
 
 		const char * TypeNamespace = get_string(context, table, i, "TypeNamespace", 0);
 		const char * TypeName = get_string(context, table, i, "TypeName", "nil");
@@ -630,55 +699,147 @@ static void dumpMethodDef(struct Context * context)
 	printf("\n");
 }
 
+static void dumpParam(struct Context * context)
+{
+	struct Table * table = context->tables + Param;
+
+	printf("-- Param Table\n");
+	for (int i = 0; i < table->rowCount; i++) {
+		const char * Name = get_string(context, table, i, "Name", "nil");
+		int Sequence = table_get_field_u64(table, i, "Sequence");
+		uint64_t Flags = table_get_field_u64(table, i, "Flags");
+		printf("%2d %s %d %lx\n", i+1, Name, Sequence, Flags);
+	}
+
+	printf("\n");
+}
+
+
+static void dumpMemberRef(struct Context * context)
+{
+	struct Table * table = context->tables + MemberRef;
+
+	printf("-- MemberRef Table\n");
+	for (int i = 0; i < table->rowCount; i++) {
+
+		const char * Name = get_string(context, table, i, "Name", "nil");
+		int Signature = table_get_field_u64(table, i, "Signature");
+		uint64_t Class = table_get_field_u64(table, i, "Class");
+
+		char ClassName[256];
+
+		printf("%2d %s.%s %d\n", i+1, get_MemberRefParent_name(context, Class, ClassName), Name, Signature);
+	}
+
+	printf("\n");
+}
+
+
+
+static int get_field_size1(struct Context * context, int type) 
+{
+	struct Table * table = context->tables + type;
+	if (table->rowCount >= 65536) {
+		return 4;
+	}
+	return 2;
+}
+
+static int get_field_size(struct Context * context, ...)
+{
+	va_list args;
+	va_start(args, context);
+
+	int count = 0;
+	int maxRowCount = 0;
+	while(1) {
+		int type = va_arg(args, int);
+		if(type < 0 || type >= 64) {
+			break;
+		}
+
+		struct Table * table = context->tables + type;
+		if (table->rowCount > maxRowCount) {
+			maxRowCount = table->rowCount;
+		}
+		count ++;
+	}
+	va_end(args);
+
+	int bit;
+	for(bit = 0; (1 << bit) < count; bit++);
+	maxRowCount <<= bit;
+
+	if (maxRowCount >= 65536) {
+		return 4;
+	}
+	
+	return 2;
+}
+
+
+
 static struct FieldInfo * get_table_fields(struct Context * context, int i)
 {
-#define F(Type, Size, Name)        {field->type = Type; field->size = Size;                       field->name = Name; field++; }
-#define S(Type, HeapSizes, Name)   {field->type = Type; field->size = (HeapSizes & 0x01) ? 4 : 2; field->name = Name; field++; }
-#define G(Type, HeapSizes, Name)   {field->type = Type; field->size = (HeapSizes & 0x02) ? 4 : 2; field->name = Name; field++; }
-#define B(Type, HeapSizes, Name)   {field->type = Type; field->size = (HeapSizes & 0x04) ? 4 : 2; field->name = Name; field++; }
+	int HeapSizes = context->HeapSizes;
+
+#define F(Type, Name, Size)        {field->type = Type; field->size = Size;                       field->name = Name; field++; }
+#define S(Type, Name)              {field->type = Type; field->size = (HeapSizes & 0x01) ? 4 : 2; field->name = Name; field++; }
+#define G(Type, Name)              {field->type = Type; field->size = (HeapSizes & 0x02) ? 4 : 2; field->name = Name; field++; }
+#define B(Type, Name)              {field->type = Type; field->size = (HeapSizes & 0x04) ? 4 : 2; field->name = Name; field++; }
+#define N(Type, Name, ...)         F(Type, Name, get_field_size(context, __VA_ARGS__, -1))
 
 	struct FieldInfo * ret = context->fields + context->filedUsed;
 	struct FieldInfo * field = ret;
 
-	int H = context->HeapSizes;
-
 	switch(i) {
 	case Module:
-		F('u', 2, "Generation"); // (a 2-byte value, reserved, shall be zero)
-		S('u', H, "Name");
-		G('u', H, "Mvid");
-		G('u', H, "EncId");
-		G('u', H, "EncBaseId");
+		F('u', "Generation", 2); // (a 2-byte value, reserved, shall be zero)
+		S('u', "Name");
+		G('u', "Mvid");
+		G('u', "EncId");
+		G('u', "EncBaseId");
 		break;
 	case TypeRef:
-		F('x', 2, "ResolutionScope"); // (a 2-byte value, reserved, shall be zero)
-		S('u', H, "TypeName");
-		S('u', H, "TypeNamespace");
+		N('x', "ResolutionScope", ResolutionScope); // (a 2-byte value, reserved, shall be zero)
+		S('u', "TypeName");
+		S('u', "TypeNamespace");
 		break;
 	case TypeDef:
-		F('x', 4, "Flags");         // (a 4-byte bitmask of type TypeAttributes, §II.23.1.15)
-		S('u', H, "TypeName");      // (an index into the String heap)
-		S('u', H, "TypeNamespace"); // (an index into the String heap)
-		S('u', 2, "Extends");       //TODO: an index into the TypeDef, TypeRef, or TypeSpec table; more precisely, a TypeDefOrRef (§II.24.2.6) coded index)
-		F('x', 2, "FieldList");     //TODO: an index into the Field table; it marks the first of a contiguous run of Fields owned by this Type
-		F('x', 2, "MethodList");    //TODO: an index into the MethodDef table; it marks the first of a continguous run of Methods owned by this Type
+		F('x', "Flags", 4);      // (a 4-byte bitmask of type TypeAttributes, §II.23.1.15)
+		S('u', "TypeName");      // (an index into the String heap)
+		S('u', "TypeNamespace"); // (an index into the String heap)
+		N('u', "Extends",    TypeDefOrRef);
+		N('x', "FieldList",  Field);
+		N('x', "MethodList", MethodDef);
 		break;
 	case Field:
-		F('x', 2, "Flags");     // (a 2-byte bitmask of type FieldAttributes, §II.23.1.5)
-		S('u', H, "Name");      // (an index into the String heap)
-		B('u', H, "Signature"); // (an index into the Blob heap) 
+		F('x', "Flags", 2);  // (a 2-byte bitmask of type FieldAttributes, §II.23.1.5)
+		S('u', "Name");
+		B('u', "Signature");
 		break;
 	case MethodDef:
-		F('x', 4, "RVA");       // (a 4-byte constant)
-		F('x', 2, "ImplFlags"); // (a 2-byte bitmask of type MethodImplAttributes, §II.23.1.10)
-		F('x', 2, "Flags");     // (a 2-byte bitmask of type MethodAttributes, §II.23.1.10)
-		S('u', H, "Name");      // (an index into the String heap)
-		B('u', H, "Signature"); // (an index into the Blob heap)
-		F('u', 2, "ParamList"); //TODO: an index into the Param table
+		F('x', "RVA", 4);       // (a 4-byte constant)
+		F('x', "ImplFlags", 2); // (a 2-byte bitmask of type MethodImplAttributes, §II.23.1.10)
+		F('x', "Flags", 2);     // (a 2-byte bitmask of type MethodAttributes, §II.23.1.10)
+		S('u', "Name");
+		B('u', "Signature");
+		N('u', "ParamList", Param);
 		break;
 	case Param:
+		F('x', "Flags", 2);    // (a 2-byte bitmask of type ParamAttributes, §II.23.1.13)
+		F('u', "Sequence", 2); // (a 2-byte constant)
+		S('u', "Name");
+		break;
 	case InterfaceImpl:
+		N('u', "Class", TypeDef);
+		N('u', "Interface", TypeDefOrRef); // (an index into the TypeDef, TypeRef, or TypeSpec table; more precisely, a TypeDefOrRef (§II.24.2.6) coded index) 
+		break;
 	case MemberRef:
+		N('u', "Class", MemberRefParent);
+		S('u', "Name");
+		B('u', "Signature");
+		break;
 	case Constant:
 	case CustomAttribute:
 	case FieldMarshal:
@@ -722,6 +883,7 @@ static struct FieldInfo * get_table_fields(struct Context * context, int i)
 #undef S
 #undef G
 #undef B
+#undef N
 
 	return ret;
 }
@@ -769,6 +931,9 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 				case TypeDef:   dumpTypeDef(context); break;
 				case Field:     dumpField(context); break;
 				case MethodDef: dumpMethodDef(context); break;
+				case Param:     dumpParam(context); break;
+				case MemberRef: dumpMemberRef(context); break;
+				case InterfaceImpl:
 				default: {
 					 char tableName[256];
 					 sprintf(tableName, "table<%d>", i);

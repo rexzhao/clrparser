@@ -1,7 +1,7 @@
 #ifndef _CLRPARSER_PE_HEADER_H_
 #define _CLRPARSER_PE_HEADER_H_
 
-#include "header.h"
+#include "table.h"
 
 
 const struct FieldInfo TCOFFFileHeader [] = {

@@ -202,7 +202,9 @@ struct Context {
 	struct Slice blobHeap;
 	struct Slice unicodeHeap;
 
-	int rows[64];
+	// int rows[64];
+
+	struct Table tables[64];
 };
 
 static void parseMetatable(const char * ptr, size_t n, struct Context * context);
@@ -235,11 +237,11 @@ static void readPE(const char * filename) {
 		return; 
 	}
 
-	struct Header COFFFileHeader;
-	ite = header_init(&COFFFileHeader, TCOFFFileHeader, ite);
-	// header_dump(&COFFFileHeader, "COFFFileHeader");
+	struct Table COFFFileHeader;
+	ite = table_init(&COFFFileHeader, TCOFFFileHeader, ite, 1);
+	// table_dump(&COFFFileHeader, "COFFFileHeader");
 
-	uint64_t SizeOfOptionalHeader = header_get_field_u64(&COFFFileHeader, "SizeOfOptionalHeader");
+	uint64_t SizeOfOptionalHeader = table_get_field_u64(&COFFFileHeader, 0, "SizeOfOptionalHeader");
 
 
 	uint64_t CLRRuntimeHeaderVirtualAddress = 0;
@@ -248,21 +250,21 @@ static void readPE(const char * filename) {
 	if (SizeOfOptionalHeader > 0) {
 		const char * magic = ite;
 
-		struct Header OptionalHeaderStandardFields;
-		struct Header OptionalHeaderWindowsSpecificFields;
+		struct Table OptionalHeaderStandardFields;
+		struct Table OptionalHeaderWindowsSpecificFields;
 
 		if (magic[0] == 0x0b && magic[1] == 0x01) { // 0x10b
-			ite = header_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32, ite);
-			ite = header_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32, ite);
+			ite = table_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32, ite, 1);
+			ite = table_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32, ite, 1);
 		} else {
-			ite = header_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32Plus, ite);
-			ite = header_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32Plus, ite);
+			ite = table_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32Plus, ite, 1);
+			ite = table_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32Plus, ite, 1);
 		}
 
-		// header_dump(&OptionalHeaderStandardFields, "OptionalHeaderStandardFields");
-		// header_dump(&OptionalHeaderWindowsSpecificFields, "OptionalHeaderWindowsSpecificFields");
+		// table_dump(&OptionalHeaderStandardFields, "OptionalHeaderStandardFields");
+		// table_dump(&OptionalHeaderWindowsSpecificFields, "OptionalHeaderWindowsSpecificFields");
 
-		uint64_t NumberOfRvaAndSizes = header_get_field_u64(&OptionalHeaderWindowsSpecificFields, "NumberOfRvaAndSizes");
+		uint64_t NumberOfRvaAndSizes = table_get_field_u64(&OptionalHeaderWindowsSpecificFields, 0, "NumberOfRvaAndSizes");
 
 		const char * tableName [] = {
 			"Export Table",
@@ -284,42 +286,42 @@ static void readPE(const char * filename) {
 		};
 
 		for (uint64_t i = 0; i < NumberOfRvaAndSizes; i++) {
-			struct Header table;
-			ite = header_init(&table, TIMAGE_DATA_DIRECTORY, ite);
-			// header_dump(&table, tableName[i]);
+			struct Table table;
+			ite = table_init(&table, TIMAGE_DATA_DIRECTORY, ite, 1);
+			// table_dump(&table, tableName[i]);
 
 			if (strcmp(tableName[i], "CLR Runtime Header") == 0) {
-				CLRRuntimeHeaderVirtualAddress = header_get_field_u64(&table, "VirtualAddress");
-				CLRRuntimeHeaderSize =  header_get_field_u64(&table, "Size");
+				CLRRuntimeHeaderVirtualAddress = table_get_field_u64(&table, 0, "VirtualAddress");
+				CLRRuntimeHeaderSize =  table_get_field_u64(&table, 0, "Size");
 			}
 		}
 	}
 
 
-	uint64_t NumberOfSections = header_get_field_u64(&COFFFileHeader, "NumberOfSections");
+	uint64_t NumberOfSections = table_get_field_u64(&COFFFileHeader, 0, "NumberOfSections");
 	for(int i = 0; i < NumberOfSections; i++) {
-		struct Header SectionTable;
-		ite = header_init(&SectionTable, TSectionTable, ite);
-		// header_dump(&SectionTable, "SectionTable");
+		struct Table SectionTable;
+		ite = table_init(&SectionTable, TSectionTable, ite, 1);
+		// table_dump(&SectionTable, "SectionTable");
 
 
-		uint64_t PointerToRawData = header_get_field_u64(&SectionTable, "PointerToRawData");
-		uint64_t SizeOfRawData = header_get_field_u64(&SectionTable, "SizeOfRawData");
+		uint64_t PointerToRawData = table_get_field_u64(&SectionTable, 0, "PointerToRawData");
+		uint64_t SizeOfRawData = table_get_field_u64(&SectionTable, 0, "SizeOfRawData");
 
 		const char * sectionPtr = fileMemory + PointerToRawData;
 
-		uint64_t VirtualSize = header_get_field_u64(&SectionTable, "VirtualSize");
-		uint64_t VirtualAddress = header_get_field_u64(&SectionTable, "VirtualAddress");
+		uint64_t VirtualSize = table_get_field_u64(&SectionTable, 0, "VirtualSize");
+		uint64_t VirtualAddress = table_get_field_u64(&SectionTable, 0, "VirtualAddress");
 
 		if (VirtualAddress <= CLRRuntimeHeaderVirtualAddress && VirtualAddress + VirtualSize >= CLRRuntimeHeaderVirtualAddress) {
-			printf("Find CLR Header %s\n", header_get_field_str(&SectionTable, "Name"));
+			printf("Find CLR Header %s\n", table_get_field_str(&SectionTable, 0, "Name"));
 			const char * ptr = fileMemory + PointerToRawData + CLRRuntimeHeaderVirtualAddress - VirtualAddress;
-			struct Header CLRHeader;
-			header_init(&CLRHeader, TCLRHeader, ptr);
-			header_dump(&CLRHeader, "CLRHeader");
+			struct Table CLRHeader;
+			table_init(&CLRHeader, TCLRHeader, ptr, 1);
+			table_dump(&CLRHeader, "CLRHeader");
 
-			uint64_t MetaDataVirtualAddress = header_get_field_u64(&CLRHeader, "MetaDataVirtualAddress");
-			uint64_t MetaDataSize = header_get_field_u64(&CLRHeader, "MetaDataSize");
+			uint64_t MetaDataVirtualAddress = table_get_field_u64(&CLRHeader, 0, "MetaDataVirtualAddress");
+			uint64_t MetaDataSize = table_get_field_u64(&CLRHeader, 0, "MetaDataSize");
 
 			assert(MetaDataVirtualAddress >= VirtualAddress && MetaDataVirtualAddress < VirtualAddress + VirtualSize);
 
@@ -327,18 +329,18 @@ static void readPE(const char * filename) {
 
 			const char * ptrStartOfTheMetadataRoot = ptr;
 
-			struct Header MetadataRoot_P1;
-			ptr = header_init(&MetadataRoot_P1, TMetadataRoot_P1, ptr);
-			header_dump(&MetadataRoot_P1, "MetadataRoot_P1");
+			struct Table MetadataRoot_P1;
+			ptr = table_init(&MetadataRoot_P1, TMetadataRoot_P1, ptr, 1);
+			table_dump(&MetadataRoot_P1, "MetadataRoot_P1");
 
-			uint64_t Length = header_get_field_u64(&MetadataRoot_P1, "Length");
+			uint64_t Length = table_get_field_u64(&MetadataRoot_P1, 0, "Length");
 			ptr += Length;
 
-			struct Header MetadataRoot_P2;
-			ptr = header_init(&MetadataRoot_P2, TMetadataRoot_P2, ptr);
-			header_dump(&MetadataRoot_P2, "MetadataRoot_P2");
+			struct Table MetadataRoot_P2;
+			ptr = table_init(&MetadataRoot_P2, TMetadataRoot_P2, ptr, 1);
+			table_dump(&MetadataRoot_P2, "MetadataRoot_P2");
 
-			uint64_t Streams = header_get_field_u64(&MetadataRoot_P2, "Streams");
+			uint64_t Streams = table_get_field_u64(&MetadataRoot_P2, 0, "Streams");
 
 			/*
 			struct Heap stringHeap = {0, 0, 0};
@@ -353,13 +355,13 @@ static void readPE(const char * filename) {
 			struct Slice tableStreamSlice = {0, 0};
 
 			for (int j = 0; j < Streams; j++) {
-				struct Header StreamHeader;
-				ptr = header_init(&StreamHeader, TStreamHeader, ptr);
-				header_dump(&StreamHeader, "StreamHeader");
+				struct Table StreamHeader;
+				ptr = table_init(&StreamHeader, TStreamHeader, ptr, 1);
+				table_dump(&StreamHeader, "StreamHeader");
 
-				uint64_t Offset = header_get_field_u64(&StreamHeader, "Offset");
-				uint64_t Size = header_get_field_u64(&StreamHeader, "Size");
-				const char * Name = header_get_field_str(&StreamHeader, "Name");
+				uint64_t Offset = table_get_field_u64(&StreamHeader, 0, "Offset");
+				uint64_t Size = table_get_field_u64(&StreamHeader, 0, "Size");
+				const char * Name = table_get_field_str(&StreamHeader, 0, "Name");
 
 				int nameLen = strlen(Name) + 1;
 				if (nameLen % 4 != 0) {
@@ -466,10 +468,10 @@ enum TableType {
 	GenericParamConstraint = 0x2C,
 };
 
-static void dump_string(struct Context * context, struct Header * cell, const char * field)
+static void dump_string(struct Context * context, struct Table * cell, const char * field)
 {
-	// header_dump(cell, "xxx");
-	uint64_t index = header_get_field_u64(cell, field);
+	// table_dump(cell, "xxx");
+	uint64_t index = table_get_field_u64(cell, 0, field);
 
 	const char * value = "null";
 	if (index >= 0 || index < context->stringHeap.size) {
@@ -491,8 +493,8 @@ static const char * readModuleTable(const char * ptr, size_t row, int heapSizes,
 
 	printf("-- Moduel Table start --\n");
 	for (int i = 0; i < row; i++) {
-		struct Header cell;
-		ptr = header_init(&cell, fiels, ptr);
+		struct Table cell;
+		ptr = table_init(&cell, fiels, ptr, 1);
 
 		dump_string(context, &cell, "Name");
 		printf("\n");
@@ -515,11 +517,11 @@ static const char * readTypeRefTable(const char * ptr, size_t row, int heapSizes
 
 	printf("-- TypeRef Table start --\n");
 	for (int i = 0; i < row; i++) {
-		struct Header cell;
-		ptr = header_init(&cell, fiels, ptr);
-		// header_dump(&cell, "TypeRef Table");
+		struct Table cell;
+		ptr = table_init(&cell, fiels, ptr, 1);
+		// table_dump(&cell, "TypeRef Table");
 
-		uint64_t ResolutionScope = header_get_field_u64(&cell, "ResolutionScope");
+		uint64_t ResolutionScope = table_get_field_u64(&cell, 0, "ResolutionScope");
 		// Module 0
 		// ModuleRef 1
 		// AssemblyRef 2
@@ -548,17 +550,22 @@ static const char * readTypeRefTable(const char * ptr, size_t row, int heapSizes
 	return ptr;
 }
 
+static struct FieldInfo * get_table_fields(struct Context * context, int HeapSizes, int i)
+{
+	return 0;
+}
+
 
 static void parseMetatable(const char * ptr, size_t size, struct Context * context)
 {
-	struct Header StreamTableheader;
-	ptr = header_init(&StreamTableheader, TMetadataTableHeader, ptr);
-	header_dump(&StreamTableheader, "StreamTableheader");
+	struct Table StreamTableheader;
+	ptr = table_init(&StreamTableheader, TMetadataTableHeader, ptr, 1);
+	table_dump(&StreamTableheader, "StreamTableheader");
 
-	const char * Valid = header_get_field_str(&StreamTableheader, "Valid");
-	const char * Sorted = header_get_field_str(&StreamTableheader, "Sorted");
+	const char * Valid = table_get_field_str(&StreamTableheader, 0, "Valid");
+	const char * Sorted = table_get_field_str(&StreamTableheader, 0, "Sorted");
 
-	int HeapSizes = header_get_field_u64(&StreamTableheader, "HeapSizes");
+	int HeapSizes = table_get_field_u64(&StreamTableheader, 0, "HeapSizes");
 
 	int tableCount = 0;
 
@@ -566,7 +573,7 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 
 	for (int i = 0; i < 64; i++) {
 		if (is_bit_set(Valid, i)) {
-			context->rows[i] = *(rows++);
+			// context->rows[i] = *(rows++);
 			tableCount ++;
 		}
 	};
@@ -577,13 +584,21 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 
 	for (int i = 0; i < 64; i++) {
 		if (is_bit_set(Valid, i)) {
-			printf("table 0x%x, rows %u %p\n", i, context->rows[i], ptr);
+
+			// printf("table 0x%x, rows %u %p\n", i, context->rows[i], ptr);
+			struct FieldInfo * fields = get_table_fields(context, HeapSizes, i);
+			assert(fields);
+			ptr = table_init(context->tables + i, fields, ptr, *(rows++));
+			table_dump(context->tables, "table");
+
+			/*
 			switch(i) {
 				case Module: ptr = readModuleTable(ptr, context->rows[Module], HeapSizes, context); break;
 				case TypeRef: ptr = readTypeRefTable(ptr, context->rows[TypeRef], HeapSizes, context); break;
 				default:
 					break;
 			}
+			*/
 		}
 	}
 }

@@ -4,16 +4,17 @@
 #include <stdlib.h>
 
 struct FieldInfo {
-	char type;
+    char type;
     int size;
     const char * name;
+	void * ctx;
 };
 
 struct Table {
     const struct FieldInfo * fields;
     const char * ptr;
     size_t cellSize;
-	size_t rowCount;
+    size_t rowCount;
 };
 
 const char * table_init(struct Table * table, const struct FieldInfo * fields, const char * ptr, int rowCount);

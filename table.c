@@ -31,10 +31,10 @@ static size_t table_get_field_size(struct Table * table, const char * field) {
             continue;
         }
 
-		return get_field_size(table->fields + i);
-	}
+        return get_field_size(table->fields + i);
+    }
 
-	return 0;
+    return 0;
 }
 
 const char * table_init(struct Table * table, const struct FieldInfo * fields, const char * ptr, int rowCount) {
@@ -42,7 +42,7 @@ const char * table_init(struct Table * table, const struct FieldInfo * fields, c
     table->cellSize = calc_cell_size(table);
 
     table->ptr = ptr;
-	table->rowCount = rowCount;
+    table->rowCount = rowCount;
 
     return ptr + table->cellSize * rowCount;
 }
@@ -88,6 +88,76 @@ const char * table_get_field_str(struct Table * table, int row, const char * fie
     return 0;
 }
 
+void table_parse(struct Table * table, void (*parser)(struct Table * table, int row, int col, const char * ptr, void * ctx), void * ctx)
+{
+    if (table->ptr == 0) {
+        return;
+    }
+
+    for (int j = 0; j < table->rowCount; j++) {
+        const char * ptr = table->ptr + table->cellSize * j;
+
+        for(int i = 0; table->fields[i].type; i++) {
+            const struct FieldInfo * field = table->fields + i;
+            parser(table, j, i, ptr, ctx);
+            ptr += get_field_size(field);
+        }
+    }
+}
+
+static void hex(const char * ptr, size_t size)
+{
+    for (size_t i = 0; i < size; i++) {
+		if (i == 0) {
+			printf("%02X", (unsigned int)(unsigned char)(ptr[i]));
+		} else {
+			printf(" %02X", (unsigned int)(unsigned char)(ptr[i]));
+		}
+    }
+}
+
+
+
+
+static void dumper(struct Table * table, int row, int col, const char * ptr, void * ctx)
+{
+    const struct FieldInfo * field = table->fields + col;
+
+    int * lastRow = (int*)ctx;
+    if (*lastRow != row) {
+        *lastRow = row;
+        printf("%d:\n", row);
+    }
+
+     switch(field->type) {
+        case 'u':
+            switch(field->size) {
+                case 1:  printf("  %s %lu\n", field->name, (uint64_t)(*(uint8_t *)ptr)); break;
+                case 2:  printf("  %s %lu\n", field->name, (uint64_t)(*(uint16_t*)ptr)); break;
+                case 4:  printf("  %s %lu\n", field->name, (uint64_t)(*(uint32_t*)ptr)); break;
+                case 8:  printf("  %s %lu\n", field->name, (uint64_t)(*(uint64_t*)ptr)); break;
+                default: assert(0);
+            };
+            break;
+        case 'x':
+            switch(field->size) {
+                case 1:  printf("  %s 0x%lx\n", field->name, (uint64_t)(*(uint8_t *)ptr)); break;
+                case 2:  printf("  %s 0x%lx\n", field->name, (uint64_t)(*(uint16_t*)ptr)); break;
+                case 4:  printf("  %s 0x%lx\n", field->name, (uint64_t)(*(uint32_t*)ptr)); break;
+                case 8:  printf("  %s 0x%lx\n", field->name, (uint64_t)(*(uint64_t*)ptr)); break;
+                default: assert(0);
+            };
+            break;
+        case 's':
+            printf("  %s %s\n", field->name, ptr);
+            break;
+        default:
+            printf("  %s [", field->name);
+            hex(ptr, field->size);
+            printf("]\n");
+            break;
+     }
+}
 
 void table_dump(struct Table * table, const char * title) {
     if (table != 0) {
@@ -99,43 +169,8 @@ void table_dump(struct Table * table, const char * title) {
         return;
     }
 
-	for (int j = 0; j < table->rowCount; j++) {
-
-		const char * ptr = table->ptr + table->cellSize * j;
-
-		printf("%d:\n", j);
-
-		for(int i = 0; table->fields[i].type; i++) {
-			switch(table->fields[i].type) {
-				case 'u':
-					switch(table->fields[i].size) {
-						case 1:  printf("  %s %lu\n", table->fields[i].name, (uint64_t)(*(uint8_t *)ptr)); break;
-						case 2:  printf("  %s %lu\n", table->fields[i].name, (uint64_t)(*(uint16_t*)ptr)); break;
-						case 4:  printf("  %s %lu\n", table->fields[i].name, (uint64_t)(*(uint32_t*)ptr)); break;
-						case 8:  printf("  %s %lu\n", table->fields[i].name, (uint64_t)(*(uint64_t*)ptr)); break;
-						default: assert(0);
-					};
-					break;
-				case 'x':
-					switch(table->fields[i].size) {
-						case 1:  printf("  %s 0x%lx\n", table->fields[i].name, (uint64_t)(*(uint8_t *)ptr)); break;
-						case 2:  printf("  %s 0x%lx\n", table->fields[i].name, (uint64_t)(*(uint16_t*)ptr)); break;
-						case 4:  printf("  %s 0x%lx\n", table->fields[i].name, (uint64_t)(*(uint32_t*)ptr)); break;
-						case 8:  printf("  %s 0x%lx\n", table->fields[i].name, (uint64_t)(*(uint64_t*)ptr)); break;
-						default: assert(0);
-					};
-					break;
-				case 's':
-					printf("  %s %s\n", table->fields[i].name, ptr);
-					break;
-				default:
-					assert(0);
-			}
-
-			ptr += get_field_size(table->fields + i);
-		}
-
-	}
+    int lastRow = -1;
+    table_parse(table, dumper, &lastRow);
 
     printf("\n");
 

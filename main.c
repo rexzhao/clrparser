@@ -1,5 +1,3 @@
-
-
 #include "reader.h"
 
 #include <assert.h>
@@ -9,8 +7,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#include "header_pe.h"
 #include "header_clr.h"
+#include "header_pe.h"
 
 
 static void readPE(const char * filename);
@@ -214,200 +212,123 @@ struct Context {
 static void parseMetatable(const char * ptr, size_t n, struct Context * context);
 
 static void readPE(const char * filename) {
-    char ptr[4] = {0x80, 0x0, 0x0, 0x0};
-    assert((*(uint32_t*)ptr) == 128);
-
     printf("read pe %s\n", filename);
 
-    char * fileMemory = read_full_file(filename);
-    if (fileMemory == 0) {
-        printf(" %s\n", strerror(errno));
-        return;
-    }
+	struct PEFile * file = read_pe_file(filename);
+	if (file == 0) {
+		printf("read pe failed %s\n", strerror(errno));
+		return;
+	}
 
-    const char * ite = fileMemory;
+	uint64_t NumberOfRvaAndSizes = 0;
+	if (file->OptionalHeaderWindowsSpecificFields_PE32 != 0) {
+		NumberOfRvaAndSizes = file->OptionalHeaderWindowsSpecificFields_PE32->NumberOfRvaAndSizes;
+	} else if (file->OptionalHeaderWindowsSpecificFields_PE32Plus != 0) {
+		NumberOfRvaAndSizes = file->OptionalHeaderWindowsSpecificFields_PE32Plus->NumberOfRvaAndSizes;
+	}
 
-    const char * MSDOSHeader = ite;
-    ite += 128;
+	if (NumberOfRvaAndSizes < 15) {
+		printf("not clr file\n");
+		return;
+	}
 
-    size_t pe_offset = *(uint32_t*)(MSDOSHeader + 0X3c);
-    ite = fileMemory + pe_offset;
+	uint64_t CLRRuntimeHeaderVirtualAddress = file->IMAGE_DATA_DIRECTORY[14].VirtualAddress;
+	uint64_t CLRRuntimeHeaderSize = file->IMAGE_DATA_DIRECTORY[14].Size;
+	if (CLRRuntimeHeaderVirtualAddress == 0 || CLRRuntimeHeaderSize == 0) {
+		printf("not clr file\n");
+		return;
+	}
 
-    const char * PESignature = ite;
-    ite += 4;
+	const char * ptr = find_virtual_addr(file, CLRRuntimeHeaderVirtualAddress);
+	if (ptr == 0)  {
+		printf("find CLRRuntimeHeader failed\n");
+		return;
+	}
 
-    if (memcmp(PESignature, "PE\0\0", 4) != 0) {
-        printf(" read pe signature error %x, %x, %x, %x\n", PESignature[0], PESignature[1], PESignature[2], PESignature[3]);
-        return; 
-    }
+	struct Table CLRHeader;
+	table_init(&CLRHeader, TCLRHeader, ptr, 1);
+	table_dump(&CLRHeader, "CLRHeader");
 
-    struct Table COFFFileHeader;
-    ite = table_init(&COFFFileHeader, TCOFFFileHeader, ite, 1);
-    // table_dump(&COFFFileHeader, "COFFFileHeader");
+	uint64_t MetaDataVirtualAddress = table_get_field_u64(&CLRHeader, 0, "MetaDataVirtualAddress");
+	uint64_t MetaDataSize = table_get_field_u64(&CLRHeader, 0, "MetaDataSize");
 
-    uint64_t SizeOfOptionalHeader = table_get_field_u64(&COFFFileHeader, 0, "SizeOfOptionalHeader");
+	ptr = find_virtual_addr(file, MetaDataVirtualAddress);
 
+	const char * ptrStartOfTheMetadataRoot = ptr;
 
-    uint64_t CLRRuntimeHeaderVirtualAddress = 0;
-    uint64_t CLRRuntimeHeaderSize = 0;
+	struct Table MetadataRoot_P1;
+	ptr = table_init(&MetadataRoot_P1, TMetadataRoot_P1, ptr, 1);
+	table_dump(&MetadataRoot_P1, "MetadataRoot_P1");
 
-    if (SizeOfOptionalHeader > 0) {
-        const char * magic = ite;
+	uint64_t Length = table_get_field_u64(&MetadataRoot_P1, 0, "Length");
+	ptr += Length;
 
-        struct Table OptionalHeaderStandardFields;
-        struct Table OptionalHeaderWindowsSpecificFields;
+	struct Table MetadataRoot_P2;
+	ptr = table_init(&MetadataRoot_P2, TMetadataRoot_P2, ptr, 1);
+	table_dump(&MetadataRoot_P2, "MetadataRoot_P2");
 
-        if (magic[0] == 0x0b && magic[1] == 0x01) { // 0x10b
-            ite = table_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32, ite, 1);
-            ite = table_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32, ite, 1);
-        } else {
-            ite = table_init(&OptionalHeaderStandardFields, TOptionalHeaderStandardFields_PE32Plus, ite, 1);
-            ite = table_init(&OptionalHeaderWindowsSpecificFields, TOptionalHeaderWindowsSpecificFields_PE32Plus, ite, 1);
-        }
+	uint64_t Streams = table_get_field_u64(&MetadataRoot_P2, 0, "Streams");
 
-        // table_dump(&OptionalHeaderStandardFields, "OptionalHeaderStandardFields");
-        // table_dump(&OptionalHeaderWindowsSpecificFields, "OptionalHeaderWindowsSpecificFields");
+	/*
+	   struct Heap stringHeap = {0, 0, 0};
+	   struct Heap blobHeap = {0, 0, 0};
+	   struct Heap guidHeap = {0, 0, 0};
+	   struct Heap usHeap = {0, 0, 0};
+   */
 
-        uint64_t NumberOfRvaAndSizes = table_get_field_u64(&OptionalHeaderWindowsSpecificFields, 0, "NumberOfRvaAndSizes");
+	struct Context context;
+	memset(&context, 0, sizeof(struct Context));
 
-        const char * tableName [] = {
-            "Export Table",
-            "Import Table",
-            "Resource Table",
-            "Exception Table",
-            "Certificate Table",
-            "Base Relocation Table",
-            "Debug",
-            "Architecture",
-            "Global Ptr",
-            "TLS Table",
-            "Load Config Table",
-            "Bound Import",
-            "IAT",
-            "Delay Import Descriptor",
-            "CLR Runtime Header",
-            "Reserved",
-        };
+	struct Slice tableStreamSlice = {0, 0};
 
-        for (uint64_t i = 0; i < NumberOfRvaAndSizes; i++) {
-            struct Table table;
-            ite = table_init(&table, TIMAGE_DATA_DIRECTORY, ite, 1);
-            // table_dump(&table, tableName[i]);
+	for (int j = 0; j < Streams; j++) {
+		struct Table StreamHeader;
+		ptr = table_init(&StreamHeader, TStreamHeader, ptr, 1);
+		table_dump(&StreamHeader, "StreamHeader");
 
-            if (strcmp(tableName[i], "CLR Runtime Header") == 0) {
-                CLRRuntimeHeaderVirtualAddress = table_get_field_u64(&table, 0, "VirtualAddress");
-                CLRRuntimeHeaderSize =  table_get_field_u64(&table, 0, "Size");
-            }
-        }
-    }
+		uint64_t Offset = table_get_field_u64(&StreamHeader, 0, "Offset");
+		uint64_t Size = table_get_field_u64(&StreamHeader, 0, "Size");
+		const char * Name = table_get_field_str(&StreamHeader, 0, "Name");
 
+		int nameLen = strlen(Name) + 1;
+		if (nameLen % 4 != 0) {
+			nameLen = nameLen / 4 * 4 + 4;
+		}
 
-    uint64_t NumberOfSections = table_get_field_u64(&COFFFileHeader, 0, "NumberOfSections");
-    for(int i = 0; i < NumberOfSections; i++) {
-        struct Table SectionTable;
-        ite = table_init(&SectionTable, TSectionTable, ite, 1);
-        // table_dump(&SectionTable, "SectionTable");
+		ptr += nameLen;
 
+		if (strcmp(Name, "#Strings") == 0) {
+			// heap_parse(&stringHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_string);
+			context.stringHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+			context.stringHeap.size = Size;
+		} else if (strcmp(Name, "#Blob") == 0) {
+			// heap_parse(&blobHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+			context.blobHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+			context.blobHeap.size = Size;
+		} else if (strcmp(Name, "#GUID") == 0) {
+			// heap_parse(&guidHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_guid);
+			context.guidHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
+			context.guidHeap.size = Size;
+		} else if (strcmp(Name, "#~") == 0) {
+			tableStreamSlice.ptr = ptrStartOfTheMetadataRoot + Offset;
+			tableStreamSlice.size = Size;
+		} else if (strcmp(Name, "#US") == 0) {
+			// heap_parse(&usHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
+			context.unicodeHeap.ptr =  ptrStartOfTheMetadataRoot + Offset;
+			context.unicodeHeap.size = Size;
+		}
+	}
 
-        uint64_t PointerToRawData = table_get_field_u64(&SectionTable, 0, "PointerToRawData");
-        uint64_t SizeOfRawData = table_get_field_u64(&SectionTable, 0, "SizeOfRawData");
+	if (tableStreamSlice.size > 0) {
+		parseMetatable(tableStreamSlice.ptr, tableStreamSlice.size, &context);
+	}
 
-        const char * sectionPtr = fileMemory + PointerToRawData;
+	// dumpStringHeap(&stringHeap);
+	// dumpBlobHeap(&blobHeap);
+	// dumpGUIDHeap(&guidHeap);
+	// dumpUnicodeStringHeap(&usHeap);
 
-        uint64_t VirtualSize = table_get_field_u64(&SectionTable, 0, "VirtualSize");
-        uint64_t VirtualAddress = table_get_field_u64(&SectionTable, 0, "VirtualAddress");
-
-        if (VirtualAddress <= CLRRuntimeHeaderVirtualAddress && VirtualAddress + VirtualSize >= CLRRuntimeHeaderVirtualAddress) {
-            printf("Find CLR Header %s\n", table_get_field_str(&SectionTable, 0, "Name"));
-            const char * ptr = fileMemory + PointerToRawData + CLRRuntimeHeaderVirtualAddress - VirtualAddress;
-            struct Table CLRHeader;
-            table_init(&CLRHeader, TCLRHeader, ptr, 1);
-            table_dump(&CLRHeader, "CLRHeader");
-
-            uint64_t MetaDataVirtualAddress = table_get_field_u64(&CLRHeader, 0, "MetaDataVirtualAddress");
-            uint64_t MetaDataSize = table_get_field_u64(&CLRHeader, 0, "MetaDataSize");
-
-            assert(MetaDataVirtualAddress >= VirtualAddress && MetaDataVirtualAddress < VirtualAddress + VirtualSize);
-
-            ptr = fileMemory + PointerToRawData + MetaDataVirtualAddress - VirtualAddress;
-
-            const char * ptrStartOfTheMetadataRoot = ptr;
-
-            struct Table MetadataRoot_P1;
-            ptr = table_init(&MetadataRoot_P1, TMetadataRoot_P1, ptr, 1);
-            table_dump(&MetadataRoot_P1, "MetadataRoot_P1");
-
-            uint64_t Length = table_get_field_u64(&MetadataRoot_P1, 0, "Length");
-            ptr += Length;
-
-            struct Table MetadataRoot_P2;
-            ptr = table_init(&MetadataRoot_P2, TMetadataRoot_P2, ptr, 1);
-            table_dump(&MetadataRoot_P2, "MetadataRoot_P2");
-
-            uint64_t Streams = table_get_field_u64(&MetadataRoot_P2, 0, "Streams");
-
-            /*
-            struct Heap stringHeap = {0, 0, 0};
-            struct Heap blobHeap = {0, 0, 0};
-            struct Heap guidHeap = {0, 0, 0};
-            struct Heap usHeap = {0, 0, 0};
-            */
-
-            struct Context context;
-            memset(&context, 0, sizeof(struct Context));
-
-            struct Slice tableStreamSlice = {0, 0};
-
-            for (int j = 0; j < Streams; j++) {
-                struct Table StreamHeader;
-                ptr = table_init(&StreamHeader, TStreamHeader, ptr, 1);
-                table_dump(&StreamHeader, "StreamHeader");
-
-                uint64_t Offset = table_get_field_u64(&StreamHeader, 0, "Offset");
-                uint64_t Size = table_get_field_u64(&StreamHeader, 0, "Size");
-                const char * Name = table_get_field_str(&StreamHeader, 0, "Name");
-
-                int nameLen = strlen(Name) + 1;
-                if (nameLen % 4 != 0) {
-                    nameLen = nameLen / 4 * 4 + 4;
-                }
-
-                ptr += nameLen;
-
-                if (strcmp(Name, "#Strings") == 0) {
-                    // heap_parse(&stringHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_string);
-                    context.stringHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
-                    context.stringHeap.size = Size;
-                } else if (strcmp(Name, "#Blob") == 0) {
-                    // heap_parse(&blobHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
-                    context.blobHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
-                    context.blobHeap.size = Size;
-                } else if (strcmp(Name, "#GUID") == 0) {
-                    // heap_parse(&guidHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_guid);
-                    context.guidHeap.ptr = ptrStartOfTheMetadataRoot + Offset;
-                    context.guidHeap.size = Size;
-                } else if (strcmp(Name, "#~") == 0) {
-                    tableStreamSlice.ptr = ptrStartOfTheMetadataRoot + Offset;
-                    tableStreamSlice.size = Size;
-                } else if (strcmp(Name, "#US") == 0) {
-                    // heap_parse(&usHeap, ptrStartOfTheMetadataRoot + Offset, Size, next_blob);
-                    context.unicodeHeap.ptr =  ptrStartOfTheMetadataRoot + Offset;
-                    context.unicodeHeap.size = Size;
-                }
-            }
-
-            if (tableStreamSlice.size > 0) {
-                    parseMetatable(tableStreamSlice.ptr, tableStreamSlice.size, &context);
-            }
-
-            // dumpStringHeap(&stringHeap);
-            // dumpBlobHeap(&blobHeap);
-            // dumpGUIDHeap(&guidHeap);
-            // dumpUnicodeStringHeap(&usHeap);
-        }
-    }
-
-    free(fileMemory);
+	free(file->ptr);
 }
 
 

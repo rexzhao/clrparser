@@ -10,6 +10,7 @@
 #include "header_clr.h"
 #include "header_pe.h"
 
+#include "opcode.h"
 
 static void readPE(const char * filename);
 
@@ -196,6 +197,8 @@ static void dumpUnicodeStringHeap(struct Heap * heap)
 }
 
 struct Context {
+	struct PEFile * file;
+
     struct Slice stringHeap;
     struct Slice guidHeap;
     struct Slice blobHeap;
@@ -278,6 +281,8 @@ static void readPE(const char * filename) {
 
 	struct Context context;
 	memset(&context, 0, sizeof(struct Context));
+
+	context.file = file;
 
 	struct Slice tableStreamSlice = {0, 0};
 
@@ -947,4 +952,23 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 			print_table(context, i);
         }
     }
+
+	struct Table * MethodDefTabe = context->tables + MethodDef;
+	for (int i = 0; i < MethodDefTabe->rowCount; i++) {
+		const char * ptr = find_virtual_addr(context->file, table_get_field_u64(MethodDefTabe, i, "RVA"));
+		printf("%s %02X\n", get_string(context, MethodDefTabe, i, "Name", "-"), ptr[0]);
+
+		if ((ptr[0] & 0x3) == 0x2) {
+			int len = ((unsigned char)ptr[0]) >> 2;
+			ptr ++;
+			const char * end = ptr + len;
+			while(ptr < end) {
+				ptr = dump_opcode(ptr);
+			}
+		} else {
+			assert(0);
+		}
+		
+
+	}
 }

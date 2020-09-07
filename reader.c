@@ -1,9 +1,11 @@
 
 #include "reader.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 
 struct reader {
     void *ctx;
@@ -104,4 +106,48 @@ struct reader * reader_from_memory(const char * ptr, size_t len) {
     reader->close = mem_close;
 
     return reader;
+}
+
+void buffer_init(struct buffer * buffer, const char * ptr, size_t len) {
+    buffer->ptr = ptr;
+    buffer->len = len;
+    buffer->pos = 0;
+}
+
+const char * buffer_read_bytes(struct buffer * buffer, size_t len)
+{
+    assert(len <= buffer->len - buffer->pos);
+    const char * ptr = buffer->ptr + buffer->pos;
+    buffer->pos += len;
+    return ptr;
+}
+
+uint8_t buffer_read_u8(struct buffer * buffer)
+{
+    return *(uint8_t*)buffer_read_bytes(buffer, 1);
+}
+
+uint16_t buffer_read_u16(struct buffer * buffer)
+{
+    return *(uint16_t*)buffer_read_bytes(buffer, 2);
+}
+
+uint32_t buffer_read_u32(struct buffer * buffer)
+{
+    return *(uint32_t*)buffer_read_bytes(buffer, 4);
+}
+
+uint64_t buffer_read_u64(struct buffer * buffer)
+{
+    return *(uint64_t*)buffer_read_bytes(buffer, 8);
+}
+
+float buffer_read_f32(struct buffer * buffer)
+{
+    return *(float*)buffer_read_bytes(buffer, 4);
+}
+
+double buffer_read_f64(struct buffer * buffer)
+{
+    return *(double*)buffer_read_bytes(buffer, 8);
 }

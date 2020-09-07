@@ -966,6 +966,30 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 				ptr = dump_opcode(ptr);
 			}
 		} else {
+            struct buffer buffer;
+            buffer_init(&buffer, ptr, 1000);
+            uint16_t flag = buffer_read_u16(&buffer);
+            uint16_t size = flag >> 12;
+            flag = flag & 0x0FFFF;
+
+            uint16_t MaxStack = buffer_read_u16(&buffer); // MaxStack Maximum number of items on the operand stack
+            uint32_t CodeSize = buffer_read_u32(&buffer); // Size in bytes of the actual method body
+            uint32_t LocalVarSigTok = buffer_read_u32(&buffer); // Meta Data token for a signature describing the layout of the local variables for the method.
+
+            printf("MaxStack %u, LocalVarSigTok = %x, flag = %x, size = %d\n", MaxStack, LocalVarSigTok, flag, size);
+            ptr = buffer.ptr + buffer.pos;
+
+            const char * end = ptr + CodeSize;
+            while(ptr < end) {
+                ptr = dump_opcode(ptr);
+            }
+
+			buffer_init(&buffer, end, 1000);
+			flag = buffer_read_u8(&buffer);
+			printf("Flag %x\n", flag);
+
+
+            // dumpHex(ptr, 16, " ");
 			assert(0);
 		}
 		

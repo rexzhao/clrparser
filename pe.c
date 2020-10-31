@@ -39,7 +39,7 @@ static char * read_full_file(const char * filename, size_t * size) {
     return fileMemory;
 }
 
-struct PEFile * read_pe_file(const char * filename)
+int read_pe_file(struct PEFile * file, const char * filename)
 {
     char ptr[4] = {0x80, 0x0, 0x0, 0x0};
     assert((*(uint32_t*)ptr) == 128);
@@ -47,7 +47,7 @@ struct PEFile * read_pe_file(const char * filename)
 	size_t fileSize;
     char * fileMemory = read_full_file(filename, &fileSize);
     if (fileMemory == 0) {
-        return 0;
+        return -1;
     }
 
     const char * ite = fileMemory;
@@ -64,10 +64,9 @@ struct PEFile * read_pe_file(const char * filename)
     if (memcmp(PESignature, "PE\0\0", 4) != 0) {
         printf(" read pe signature error %x, %x, %x, %x\n", PESignature[0], PESignature[1], PESignature[2], PESignature[3]);
 		free(fileMemory);
-        return 0; 
+        return -1; 
     }
 
-	struct PEFile * file = (struct PEFile*)malloc(sizeof(struct PEFile));
 	memset(file, 0, sizeof(struct PEFile));
 	file->ptr = fileMemory;
 	file->size = fileSize;
@@ -102,7 +101,7 @@ struct PEFile * read_pe_file(const char * filename)
 
 	file->SectionTable = (struct TSectionTable*)ite;
 
-	return file;
+	return 0;
 }
 
 

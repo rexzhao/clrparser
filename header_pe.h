@@ -1,8 +1,6 @@
 #ifndef _CLRPARSER_PE_HEADER_H_
 #define _CLRPARSER_PE_HEADER_H_
 
-#include "table.h"
-
 #include <stdlib.h>
 
 #pragma pack(push, 1)
@@ -185,7 +183,7 @@ struct PEFile {
 	struct TSectionTable * SectionTable;
 };
 
-struct PEFile * read_pe_file(const char * filename);
+int read_pe_file(struct PEFile * file, const char * filename);
 const char * find_virtual_addr(struct PEFile * file, uint64_t VirtualAddress);
 
 #endif

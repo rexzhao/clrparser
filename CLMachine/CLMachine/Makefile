@@ -1,17 +1,17 @@
 OBJ=$(patsubst %.cpp, %.o, $(wildcard *.cpp))
 
-BIN=cclr
+BIN=clm
 
-all : bin/${BIN}
+all : ${BIN}
 
-bin/${BIN} : ${OBJ}
+${BIN} : ${OBJ}
 	g++ -g -o $@ $^
 
 %.o : %.c
 	g++ -g -c -o $@ $<
 
 clean : 
-	rm -vf bin/${BIN} ${OBJ}
+	rm -vf ${BIN} ${OBJ}
 
 run :
-	bin/${BIN} a.dll
+	${BIN} a.dll

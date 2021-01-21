@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#include "header_pe.h"
+#include "pe.h"
 
 static char * read_full_file(const char * filename, size_t * size) {
     FILE * file = fopen(filename, "rb");
@@ -41,7 +41,7 @@ static char * read_full_file(const char * filename, size_t * size) {
 
 int read_pe_file(struct PEFile * file, const char * filename)
 {
-    char ptr[4] = {0x80, 0x0, 0x0, 0x0};
+    unsigned char ptr[4] = {0x80, 0x0, 0x0, 0x0};
     assert((*(uint32_t*)ptr) == 128);
 
 	size_t fileSize;

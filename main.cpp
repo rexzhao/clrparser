@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#include "header_clr.h"
-#include "header_pe.h"
+#include "clr.h"
+#include "pe.h"
 
 #include "opcode.h"
 
@@ -34,4 +34,6 @@ static void work(const char * filename)
 	if (read_clr(&context, &pe) != 0) {
 		assert(0);
 	}
+
+	clr_dump_type(&context);
 }

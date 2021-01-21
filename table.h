@@ -21,8 +21,9 @@ const char * table_init(struct Table * table, const struct FieldInfo * fields, c
 
 // size_t       table_get_field_size(struct Table * table, int row, const char * field);
 
-uint64_t     table_get_field_u64(struct Table * table,  int row,const char * field);
-const char * table_get_field_str(struct Table * table,  int row,const char * field);
+uint64_t     table_get_field_u64(struct Table * table, int row, const char * field);
+const char * table_get_field_str(struct Table * table, int row, const char * field);
+void *       table_get_field_ctx(struct Table * table, int row, const char * field);
 
 void table_dump(struct Table * table, const char * title);
 

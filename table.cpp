@@ -47,6 +47,23 @@ const char * table_init(struct Table * table, const struct FieldInfo * fields, c
     return ptr + table->cellSize * rowCount;
 }
 
+void * table_get_field_ctx(struct Table * table, int row, const char * field) {
+	if (table->ptr == 0) {
+        return 0;
+    }
+
+    const char * ptr = table->ptr + table->cellSize * row;
+    for(int i = 0; table->fields[i].type; i++) {
+        if (strcmp(table->fields[i].name, field) != 0) {
+            ptr += get_field_size(table->fields + i);
+            continue;
+        }
+		return table->fields[i].ctx;
+	}
+
+	return 0;
+}
+
 uint64_t table_get_field_u64(struct Table * table, int row, const char * field) {
     if (table->ptr == 0) {
         return 0;

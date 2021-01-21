@@ -8,10 +8,12 @@
 #include <stdarg.h>
 
 #include "table.h"
-#include "header_pe.h"
-#include "header_clr.h"
+#include "pe.h"
+#include "clr.h"
 #include "opcode.h"
 #include "reader.h"
+
+#include "clr_header.h"
 
 #define READ_TABLE(NAME, COUNT) struct T##NAME * NAME = (struct T##NAME*)ptr; ptr += sizeof(struct T##NAME) * COUNT;
 
@@ -27,14 +29,14 @@ int read_clr(struct Context * context, struct PEFile * file)
 	}
 
 	if (NumberOfRvaAndSizes < 15) {
-		printf("not clr file\n");
+		printf("not clr file, NumberOfRvaAndSizes: %d\n", (int)NumberOfRvaAndSizes);
 		return -1;
 	}
 
 	uint64_t CLRRuntimeHeaderVirtualAddress = file->IMAGE_DATA_DIRECTORY[14].VirtualAddress;
 	uint64_t CLRRuntimeHeaderSize = file->IMAGE_DATA_DIRECTORY[14].Size;
 	if (CLRRuntimeHeaderVirtualAddress == 0 || CLRRuntimeHeaderSize == 0) {
-		printf("not clr file\n");
+		printf("not clr file, CLRRuntimeHeaderVirtualAddress %lu, CLRRuntimeHeaderSize %lu\n", CLRRuntimeHeaderVirtualAddress, CLRRuntimeHeaderSize);
 		return -1;
 	}
 
@@ -276,6 +278,38 @@ static int get_field_size(struct Context * context, const int values[])
 	}
 
 	return (maxRowCount >= 65536) ? 4 : 2;
+}
+
+static int table_get_field_index(struct Table * table, int row, const char * field, int * tab) 
+{
+	if (tab) *tab = 0;
+
+	int value = table_get_field_u64(table, row, field);
+	if (value == 0) {
+		return 0;
+	}
+
+	const int * values = (const int*)table_get_field_ctx(table, row, field);
+
+    int count = 0;
+	for(int i = 0; 1; i++) {
+        int type = values[i];
+        if(type < 0 || type >= 64) {
+            break;
+        }
+		count ++;
+    }
+
+	if (count <= 1) {
+		if (tab) *tab = values[0];
+		return value;
+	}
+
+	int bit = 0;
+	for(bit = 0; (1 << bit) < count; bit++);
+
+	if (tab) *tab = value & ((1 << bit) - 1);
+	return value >> bit;
 }
 
 static const char * get_string(struct Context * context, struct Table * table, int row, const char * field, const char * def)
@@ -662,7 +696,7 @@ void _F(void * ctx, char type, const char * name, const int values [])
 		case 'S': field->size = (HeapSizes & 0x01) ? 4 : 2; break;
 		case 'G': field->size = (HeapSizes & 0x02) ? 4 : 2; break;
 		case 'B': field->size = (HeapSizes & 0x04) ? 4 : 2; break;
-		case 'I': field->size = get_field_size(context, values); break;
+		case 'I': field->size = get_field_size(context, values); field->ctx = (void*)values; break;
 		default: assert(0);
 	}
 
@@ -714,7 +748,7 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
         }
     };
 
-    printf("Valid count %d, HeapSizes %d\n", tableCount, context->HeapSizes);
+    // printf("Valid count %d, HeapSizes %d\n", tableCount, context->HeapSizes);
 
     ptr += 4 * tableCount;
 
@@ -727,77 +761,115 @@ static void parseMetatable(const char * ptr, size_t size, struct Context * conte
 
             assert(fields);
             ptr = table_init(context->tables + i, fields, ptr, row);
-			print_table(context, i);
+			// print_table(context, i);
         }
     }
+}
+
+void clr_dump_type(struct Context * context) {
+	struct Table * MethodDefTable = context->tables + MethodDef;
+	int maxMethodCount = MethodDefTable->rowCount;
+
+	struct Table * TypeDefTable = context->tables + TypeDef;
+	for (int i = 0; i < TypeDefTable->rowCount; i++) {
+		uint64_t flag = table_get_field_u64(TypeDefTable, i, "Flags");
+		const char * TypeName = get_string(context, TypeDefTable, i, "TypeName", "-");
+		const char * TypeNamespace = get_string(context, TypeDefTable, i, "TypeNamespace", "");
+		// Extends
+		// case TypeDef: F("Flags", 4); S("TypeName"); S("TypeNamespace"); I("Extends", TypeDefOrRef); I("FieldList",  Field); I("MethodList", MethodDef); break; 
+
+		int MethodList = table_get_field_index(TypeDefTable, i, "MethodList", 0);
+		// uint64_t MethodList = table_get_field_u64(TypeDefTable, i, "MethodList");
+
+		printf("%s.%s  %d\n", TypeNamespace, TypeName, MethodList);
+
+		int from = (int)MethodList;
+		int to = maxMethodCount;
+		if (i < TypeDefTable->rowCount - 1) {
+			to = table_get_field_index(TypeDefTable, i + 1, "MethodList", 0);
+		}
+
+		for (int j = from; j < to; j ++) {
+			clr_dump_method(context, j);
+		}
+	}
+
+	struct Table * TypeRefTable = context->tables + TypeRef;
+	for (int i = 0; i < TypeRefTable->rowCount; i++) {
+		const char * TypeName = get_string(context, TypeRefTable, i, "TypeName", "-");
+		const char * TypeNamespace = get_string(context, TypeRefTable, i, "TypeNamespace", "");
+		printf("@%s.%s\n", TypeNamespace, TypeName);
+	}
+}
+
+void clr_dump_method(struct Context * context, int methodIndex) {
+	methodIndex = methodIndex - 1;
 
 	struct Table * MethodDefTabe = context->tables + MethodDef;
-	for (int i = 0; i < MethodDefTabe->rowCount; i++) {
-		const char * ptr = find_virtual_addr(context->file, table_get_field_u64(MethodDefTabe, i, "RVA"));
-		printf("%s %02X\n", get_string(context, MethodDefTabe, i, "Name", "-"), ptr[0]);
 
-		if ((ptr[0] & 0x3) == 0x2) {
-			int len = ((unsigned char)ptr[0]) >> 2;
-			ptr ++;
-			const char * end = ptr + len;
-			while(ptr < end) {
-				ptr = dump_opcode(ptr);
-			}
-		} else {
-			// fat header
-            struct buffer buffer;
-            buffer_init(&buffer, ptr, 1000);
-            uint16_t flag = buffer_read_u16(&buffer);
-            uint16_t size = flag >> 12;
-            flag = flag & 0x0FFF;
+	const char * ptr = find_virtual_addr(context->file, table_get_field_u64(MethodDefTabe, methodIndex, "RVA"));
+	printf("%s %02X\n", get_string(context, MethodDefTabe, methodIndex, "Name", "-"), ptr[0]);
 
-            uint16_t MaxStack = buffer_read_u16(&buffer); // MaxStack Maximum number of items on the operand stack
-            uint32_t CodeSize = buffer_read_u32(&buffer); // Size in bytes of the actual method body
-            uint32_t LocalVarSigTok = buffer_read_u32(&buffer); // Meta Data token for a signature describing the layout of the local variables for the method.
-
-            printf("# MaxStack %u, CodeSize = %d, LocalVarSigTok = %x, flag = %x, size = %d\n", MaxStack, CodeSize, LocalVarSigTok, flag, size);
-            ptr = buffer.ptr + buffer.pos;
-
-			// body
-            const char * end = ptr + CodeSize;
-            while(ptr < end) {
-                ptr = dump_opcode(ptr);
-            }
-
-			/*
-			ptr = end + (4 - ((unsigned long)end) % 4);
-
-			dumpHex(ptr, 8, " ");
-
-            buffer_init(&buffer, ptr, 1000);
-
-			uint8_t kind = buffer_read_u8(&buffer);
-			if (kind & 0x1) {
-				printf("CorILMethod_Sect_EHTable 0x1 Exception handling data.\n");
-			}
-
-			if (kind & 0x2) {
-				printf("CorILMethod_Sect_OptILTable 0x2 Reserved, shall be 0.\n");
-			}
-
-			if (kind & 0x40) {
-				printf("CorILMethod_Sect_FatFormat 0x40 Data format is of the fat variety\n");
-			}
-
-			if (kind & 0x80) {
-				printf("CorILMethod_Sect_MoreSects 0x80 Another data section occurs after this current section\n");
-			}
-			*/
-			
-			// buffer_init(&buffer, end, 1000);
-			// flag = buffer_read_u8(&buffer);
-			// printf("Flag %x\n", flag);
-
-
-            // dumpHex(ptr, 16, " ");
-			// assert(0);
+	if ((ptr[0] & 0x3) == 0x2) {
+		int len = ((unsigned char)ptr[0]) >> 2;
+		ptr ++;
+		const char * end = ptr + len;
+		while(ptr < end) {
+			ptr = dump_opcode(ptr);
 		}
-		
-
+		return;
 	}
+
+	// fat header
+	struct buffer buffer;
+	buffer_init(&buffer, ptr, 1000);
+	uint16_t flag = buffer_read_u16(&buffer);
+	uint16_t size = flag >> 12;
+	flag = flag & 0x0FFF;
+
+	uint16_t MaxStack = buffer_read_u16(&buffer); // MaxStack Maximum number of items on the operand stack
+	uint32_t CodeSize = buffer_read_u32(&buffer); // Size in bytes of the actual method body
+	uint32_t LocalVarSigTok = buffer_read_u32(&buffer); // Meta Data token for a signature describing the layout of the local variables for the method.
+
+	printf("# MaxStack %u, CodeSize = %d, LocalVarSigTok = %x, flag = %x, size = %d\n", MaxStack, CodeSize, LocalVarSigTok, flag, size);
+	ptr = buffer.ptr + buffer.pos;
+
+	// body
+	const char * end = ptr + CodeSize;
+	while(ptr < end) {
+		ptr = dump_opcode(ptr);
+	}
+
+	/*
+	ptr = end + (4 - ((unsigned long)end) % 4);
+
+	dumpHex(ptr, 8, " ");
+
+	buffer_init(&buffer, ptr, 1000);
+
+	uint8_t kind = buffer_read_u8(&buffer);
+	if (kind & 0x1) {
+		printf("CorILMethod_Sect_EHTable 0x1 Exception handling data.\n");
+	}
+
+	if (kind & 0x2) {
+		printf("CorILMethod_Sect_OptILTable 0x2 Reserved, shall be 0.\n");
+	}
+
+	if (kind & 0x40) {
+		printf("CorILMethod_Sect_FatFormat 0x40 Data format is of the fat variety\n");
+	}
+
+	if (kind & 0x80) {
+		printf("CorILMethod_Sect_MoreSects 0x80 Another data section occurs after this current section\n");
+	}
+	*/
+	
+	// buffer_init(&buffer, end, 1000);
+	// flag = buffer_read_u8(&buffer);
+	// printf("Flag %x\n", flag);
+
+
+	// dumpHex(ptr, 16, " ");
+	// assert(0);
 }

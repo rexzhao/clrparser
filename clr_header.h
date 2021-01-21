@@ -1,8 +1,7 @@
 #ifndef _CLRPARSER_CLR_HEADER_H_
 #define _CLRPARSER_CLR_HEADER_H_
 
-#include "table.h"
-#include "header_pe.h"
+#include <stdint.h>
 
 #pragma pack(push, 1)
 
@@ -70,28 +69,5 @@ struct TMetadataTableHeader {
 
 #pragma pack(pop)
 
-
-struct Slice {
-    const char * ptr;
-    size_t size;
-};
-
-struct Context {
-    struct PEFile * file;
-
-    struct Slice stringHeap;
-    struct Slice guidHeap;
-    struct Slice blobHeap;
-    struct Slice unicodeHeap;
-
-    int HeapSizes;
-
-    struct Table tables[64];
-
-    struct FieldInfo fields[200]; // 160
-    int filedUsed;
-};
-
-int read_clr(struct Context * context, struct PEFile * file);
 
 #endif

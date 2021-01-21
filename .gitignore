@@ -54,3 +54,6 @@ Mkfile.old
 dkms.conf
 
 .vs
+CLMachine/CLMachine/Debug/
+CLRExport/CLRExport/obj/
+

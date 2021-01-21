@@ -36,6 +36,24 @@ namespace System {
         }
     };
 
+    namespace Double {
+        static int ToString(const Context* context, IStack* stack) {
+            const Value& value = stack->Pop();
+
+            char data[32];
+
+            size_t n = snprintf(data, 32, "%lf", value.ToNumber());
+
+            char* msg = new char[n + 1];
+            memcpy(msg, data, n + 1);
+            msg[n] = 0;
+
+            stack->Push(msg);
+
+            return 1;
+        }
+    };
+
     namespace String {
         static int Concat(const Context* context, IStack* stack) {
             const Value& v2 = stack->Pop();
@@ -71,7 +89,7 @@ int main(int argc, char* argv[])
 {
     Context c;
 
-    const char* filename = "out.txt";
+    const char* filename = "../../CLRExport/CLRExport/bin/Debug/netcoreapp3.1/out.txt";
     if (argc > 1) {
         filename = argv[1];
     }
@@ -82,6 +100,7 @@ int main(int argc, char* argv[])
 
     c.Register("System.Console::WriteLine", System::Console::WriteLine);
     c.Register("System.Int32::ToString", System::Int32::ToString);
+    c.Register("System.Double::ToString", System::Double::ToString);
     c.Register("System.String::Concat", System::String::Concat);
 
     auto s1 = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();

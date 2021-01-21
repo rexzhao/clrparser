@@ -24,7 +24,18 @@ namespace TestExport
     {
         public static int Start()
         {
-            int v = Fab(15000);
+
+            double v1;
+            v1 = 10.0 % 6.0; // is 4(+10 div + 6 = 1)
+            Console.WriteLine("v1 " + v1);
+            v1 = 10.0 % -6.0; // is 4(+10 div - 6 = -1)
+            Console.WriteLine("v2 " + v1);
+            v1 = -10.0 % 6.0; // is -4(-10 div + 6 = -1)
+            Console.WriteLine("v3 " + v1);
+            v1 = -10.0 % -6.0; // is -4(-10 div - 6 = 1)
+            Console.WriteLine("v4 " + v1);
+
+            int v = Fab(1);
             Console.WriteLine("Hello World! " + v);
             return v;
         }

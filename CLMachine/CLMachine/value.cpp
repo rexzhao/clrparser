@@ -34,6 +34,14 @@ public:
     }
 };
 
+class MathOperatorRem {
+public:
+    template<class T> T DO(T t1, T t2) const {
+        return (T)fmod(t1, t2);
+    }
+};
+
+
 template<typename MathOperator>
 static const Value math_operator(const Value& a, const Value& b, const MathOperator& opt) {
     int t = (a.GetType() < b.GetType()) ? b.GetType() : a.GetType();
@@ -69,6 +77,38 @@ static const Value math_operator(const Value& a, const Value& b, const MathOpera
     return Value::Nil;
 }
 
+class MathOperatorAnd {
+public:
+    template<class T> T DO(T t1, T t2) const {
+        return t1 & t2;
+    }
+};
+
+
+class MathOperatorOr {
+public:
+    template<class T> T DO(T t1, T t2) const {
+        return t1 | t2;
+    }
+};
+
+
+template<typename BitOperator>
+static const Value bit_operator(const Value& a, const Value& b, const BitOperator& opt) {
+    assert(a.GetType() == b.GetType());
+    if (a.GetType() == 0) {
+        return Value(opt.DO((int)a.ToInterger(), (int)b.ToInterger()));
+    }
+    else if (a.GetType() == 1) {
+        return Value(opt.DO(a.ToInterger(), b.ToInterger()));
+    }
+
+    assert(false);
+
+    return Value::Nil;
+}
+
+
 const Value operator + (const Value& a, const Value& b) {
     return math_operator(a, b, MathOperatorAdd());
 }
@@ -83,6 +123,38 @@ const Value operator * (const Value& a, const Value& b) {
 
 const Value operator / (const Value& a, const Value& b) {
     return math_operator(a, b, MathOperatorDiv());
+}
+
+const Value operator % (const Value& a, const Value& b) {
+    return math_operator(a, b, MathOperatorRem());
+}
+
+const Value operator & (const Value& a, const Value& b) {
+    return bit_operator(a, b, MathOperatorRem());
+}
+
+const Value operator | (const Value& a, const Value& b) {
+    return bit_operator(a, b, MathOperatorRem());
+}
+
+const Value operator - (const Value& a) {
+    int t = a.GetType();
+    if (t == 0) {
+        return Value((int)-a.ToInterger());
+    }
+    else if (t == 1) {
+        return Value(-a.ToInterger());
+}
+    else if (t == 2) {
+        return Value((float)-a.ToNumber());
+    }
+    else if (t == 3) {
+        return Value(-a.ToNumber());
+    }
+        
+    assert(false);
+
+    return Value::Nil;
 }
 
 Value Value::Nil;

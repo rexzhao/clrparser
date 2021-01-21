@@ -267,17 +267,51 @@ bool Process::Step() {
         stack->Push(v1 / v2); pc++;
     }
                   break;
-    case Code::Div_Un:
-    case Code::Rem:
+    case Code::Rem: {
+        DEBUG_STEP("rem");
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        stack->Push(v1 % v2); pc++;
+    }
+    break;
+    case Code::Neg:
+    {
+        DEBUG_STEP("neg");
+        stack->Push(-stack->Pop()); pc++;
+    }
+    break;
+	case Code::Div_Un: {
+        assert(false);
+		DEBUG_STEP("div.un");
+		Value v2 = stack->Pop();
+		Value v1 = stack->Pop();
+		uint32_t u1 = v1.ToInterger();
+		uint32_t u2 = v2.ToInterger();
+		stack->Push((int)(u1 / u2)); pc++;
+	}
+		break;
     case Code::Rem_Un:
-    case Code::And:
-    case Code::Or:
+        assert(false);
+        break;
+    case Code::And: {
+        DEBUG_STEP("and");
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        stack->Push(v1 & v2); pc++;
+    }
+                  break;
+    case Code::Or: {
+        DEBUG_STEP("or");
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        stack->Push(v1 | v2); pc++;
+    }
+                 break;
     case Code::Xor:
     case Code::Shl:
     case Code::Shr:
-    case Code::Shr_Un:
-    case Code::Neg:
     case Code::Not:
+    case Code::Shr_Un:
         assert(false);
         break;
     case Code::Ldloca_S:
@@ -296,11 +330,17 @@ bool Process::Step() {
         }
     }
                     break;
+    case Code::Dup:
+        DEBUG_STEP("dup");
+        stack->Push(stack->Pop()); pc++;
+        break;
+    case Code::Jmp:
+        assert(false);
+        DEBUG_STEP("jmp");
+        break;
     case Code::Ldarga_S:
     case Code::Calli:
     case Code::Starg_S:
-    case Code::Dup:
-    case Code::Jmp:
     case Code::Beq_S:
     case Code::Bge_S:
     case Code::Bgt_S:

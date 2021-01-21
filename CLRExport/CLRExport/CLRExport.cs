@@ -176,7 +176,8 @@ namespace CLRExport
         static void WriteOperand(Context context, double value)
         {
             // context.writer.Write(System.BitConverter.GetBytes;
-            context.writer.Write(System.BitConverter.GetBytes(value));
+            var bs = System.BitConverter.GetBytes(value);
+            context.writer.Write(bs);
         }
 
         static void Collect(Context context, MethodDefinition m)

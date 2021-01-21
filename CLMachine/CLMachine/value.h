@@ -30,28 +30,27 @@ public:
 
     Value(const Value& v) {
         type = v.type;
-        if (v.type == 4) {
-            value.o = ref(v.value.o);
+        value = v.value;
+
+        if (type == 4) {
+            ref(value.o);
         }
-        else if (v.type == 5) {
-            value.s = ref(v.value.s);
-        }
-        else {
-            value.l = v.value.l;
+        else if (type == 5) {
+            ref(value.s);
         }
     }
 
     Value& operator = (const Value& v) {
         type = v.type;
-        if (v.type == 4) {
-            value.o = ref(v.value.o);
+        value = v.value;
+
+        if (type == 4) {
+            ref(value.o);
         }
-        else if (v.type == 5) {
-            value.s = ref(v.value.s);
+        else if (type == 5) {
+            ref(value.s);
         }
-        else {
-            value.l = v.value.l;
-        }
+
         return *this;
     }
 
@@ -138,3 +137,9 @@ const Value operator + (const Value& a, const Value& b);
 const Value operator - (const Value& a, const Value& b);
 const Value operator * (const Value& a, const Value& b);
 const Value operator / (const Value& a, const Value& b);
+const Value operator % (const Value& a, const Value& b);
+const Value operator - (const Value& a);
+
+const Value operator & (const Value& a, const Value& b);
+const Value operator | (const Value& a, const Value& b);
+

@@ -4,6 +4,64 @@
 
 #include "value.h"
 
+template<class T>
+class Array {
+    T* ptr;
+    int size;
+    int cap;
+
+    void grow() {
+        cap *= 2;
+        if (ptr == 0) {
+            ptr = (T*)malloc(sizeof(T) * cap);
+        }
+        else {
+            ptr = (T*)realloc(ptr, sizeof(T) * cap);
+        }
+    }
+
+public:
+    Array() {
+        size = 0;
+        ptr = 0;
+        cap = 2;
+        grow();
+    }
+
+    int Size() {
+        return size;
+    }
+
+    void Set(int index, T* v) {
+        assert(index <= size);
+        ptr[index] = *v;
+    }
+
+    T * Push(T v) {
+        if (size == cap) {
+            grow();
+        }
+
+        ptr[size++] = v;
+
+        return ptr + (size - 1);
+    }
+
+    T* Pop() {
+        return ptr + (--size);
+    }
+
+    T* Last() {
+        if (size <= 0) return NULL;
+
+        return ptr + (size - 1);
+    }
+
+    T* Get(int index) {
+        return ptr + index;
+    }
+};
+
 class IStack {
 public:
     virtual ~IStack() {}

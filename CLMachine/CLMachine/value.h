@@ -35,8 +35,9 @@ public:
     Value(float v) { type = FLOAT; value.f = v; }
     Value(double v) { type = DOUBLE; value.d = v; }
     Value(Object* v = 0) { type = OBJECT; value.o = v; }
-    Value(const char* v) { type = STRING;  value.s = ref(v); }
+    Value(const char* v) { type = STRING;  value.s = v; }
 
+    /*
     Value(const Value& v) {
         type = v.type;
         value = v.value;
@@ -67,6 +68,7 @@ public:
         Reset();
     }
 
+
     void Reset() {
         if (type == OBJECT) {
             unref(value.o);
@@ -78,6 +80,8 @@ public:
         type = OBJECT;
         value.o = 0;
     }
+    */
+
 
     int GetType() const {
         return type;

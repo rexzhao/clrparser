@@ -10,6 +10,8 @@ class Context;
 class IMethod;
 class Method;
 
+
+
 class Process {
     const Context* context;
 
@@ -21,19 +23,12 @@ class Process {
 
         int pc;
         int ret;
-
-        Frame() : method(0), local(0), stack(0), pc(0), ret(0) {};
-
-        void Reset() {
-            method = 0;
-            local = stack = pc = ret = 0;
-        }
     };
 
-    std::list<Frame> frames;
+    Array<Frame> frames;
 
+    Frame * cur;
 
-    Frame cur;
     Stack stack;
     Stack locals;
 
@@ -44,7 +39,7 @@ class Process {
 
 public:
     Process(const Context* context)
-        : context(context) {
+        : context(context), cur(0) {
     }
 
     ~Process() {

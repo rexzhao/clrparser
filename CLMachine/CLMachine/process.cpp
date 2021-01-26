@@ -11,50 +11,55 @@ void Process::Start(const IMethod* method) {
 }
 
 void Process::PushFrame(const Method* method, int argCount) {
-    if (cur.method != NULL) {
-        frames.push_back(cur);
-    }
-
     stack.SetBase(0);
     locals.SetBase(0);
 
-    cur.method = method;
-    cur.local = locals.GetTop();
-    cur.pc = 0;
-    cur.ret = 0;
-    cur.stack = stack.GetTop() - argCount;
+    Frame frame;
+    memset(&frame, 0, sizeof(Frame));
 
-    stack.SetBase(cur.stack);
-    locals.SetBase(cur.local);
+    cur = frames.Push(frame);
+
+    cur->method = method;
+    cur->local = locals.GetTop();
+    cur->pc = 0;
+    cur->ret = 0;
+    cur->stack = stack.GetTop() - argCount;
+
+    stack.SetBase(cur->stack);
+    locals.SetBase(cur->local);
 }
 
 void Process::Return() {
     int retCount = 0;
     Value retValue;
-    if (cur.method != NULL) {
-        retCount = cur.ret;
+    if (cur != NULL) {
+        retCount = cur->ret;
         if (retCount > 0) {
             retValue = stack.Pop();
         }
     }
 
-    if (frames.empty()) {
-        cur.Reset();
+    if (frames.Size() == 0) {
+        cur = NULL;
         return;
     }
 
-    cur = frames.back();
-    frames.pop_back();
+    frames.Pop();
+
+    cur = frames.Last();
 
     stack.Clear();
-    stack.SetBase(cur.stack);
-
-    if (retCount > 0) {
-        stack.Push(retValue);
-    }
-
     locals.Clear();
-    locals.SetBase(cur.local);
+
+    if (cur != NULL) {
+        stack.SetBase(cur->stack);
+
+        if (retCount > 0) {
+            stack.Push(retValue);
+        }
+
+        locals.SetBase(cur->local);
+    }
 }
 
 void Process::StoreLocal(int pos, const Value& obj) {
@@ -66,14 +71,14 @@ void Process::StoreLocal(int pos, const Value& obj) {
 }
 
 bool Process::Step() {
-    if (cur.method == NULL) {
+    if (cur == NULL) {
         return false;
     }
 
-    const Method* method = cur.method;
+    const Method* method = cur->method;
     IStack* stack = GetStack();
 
-    int& pc = cur.pc;
+    int& pc = cur->pc;
 
     Instruction instruction = method->GetInstruction(pc);
 
@@ -242,6 +247,20 @@ bool Process::Step() {
             pc++;
         }
         break;
+    case Code::Blt:
+    case Code::Blt_S:
+    {
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        if (v1.ToNumber() < v2.ToNumber()) {
+            pc = (int)instruction.oprand;
+        }
+        else {
+            pc++;
+        }
+        break;
+    }
+        break;
     case Code::Add: {
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
@@ -335,7 +354,6 @@ bool Process::Step() {
     case Code::Beq_S:
     case Code::Bge_S:
     case Code::Bgt_S:
-    case Code::Blt_S:
     case Code::Bne_Un_S:
     case Code::Bge_Un_S:
     case Code::Bgt_Un_S:
@@ -345,7 +363,6 @@ bool Process::Step() {
     case Code::Bge:
     case Code::Bgt:
     case Code::Ble:
-    case Code::Blt:
     case Code::Bne_Un:
     case Code::Bge_Un:
     case Code::Bgt_Un:
@@ -496,7 +513,7 @@ void Process::CallMethod(int64_t key)
 
     //cur pointer changed
 
-    cur.ret = ret;
+    cur->ret = ret;
 }
 
 

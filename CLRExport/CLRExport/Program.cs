@@ -41,10 +41,13 @@ namespace TestExport
             */
 
             int v = 0;
+            v = Fab(10000);
+            /*
             for (int i = 0; i < 100; i++) {
                 v = Fab(10000);
             }
-            // Console.WriteLine("Hello World! " + v);
+            */
+            Console.WriteLine("Hello World! " + v);
             return v;
         }
 

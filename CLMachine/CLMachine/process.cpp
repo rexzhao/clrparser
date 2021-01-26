@@ -13,47 +13,42 @@ void Process::Start(const IMethod* method) {
 void Process::Return() {
     int retCount = 0;
     Value retValue;
-    if (cur != NULL) {
-        retCount = cur->ret;
+    if (cur.method != NULL) {
+        retCount = cur.ret;
         if (retCount > 0) {
-            retValue = cur->stack->Pop();
+            retValue = stack.Pop();
         }
-        delete cur;
+        stack.Clear();
     }
 
     if (frames.empty()) {
-        cur = NULL;
+        cur.method = NULL;
+        return;
     }
-    else {
-        cur = frames.back();
-        frames.pop_back();
 
-        if (retCount > 0) {
-            cur->stack->Push(retValue);
-        }
+
+    cur = frames.back();
+    frames.pop_back();
+
+    if (retCount > 0) {
+        stack.SetBase(cur.stack);
+        stack.Push(retValue);
     }
 }
 
 void Process::StoreLocal(int pos, const Value& obj) {
-    int n = cur->locals.size();
-    if (n <= pos) {
-        if (n <= 0) n = 4;
-        while (n <= pos) { n *= 2; }
-        cur->locals.resize(n);
-    }
-
-    cur->locals[pos] = obj;
+    locals[pos] = obj;
 }
 
 bool Process::Step() {
-    if (cur == NULL) {
+    if (cur.method == NULL) {
         return false;
     }
 
-    const Method* method = cur->method;
-    IStack* stack = cur->stack;
+    const Method* method = cur.method;
+    IStack* stack = GetStack();
 
-    int& pc = cur->pc;
+    int& pc = cur.pc;
 
     Instruction instruction = method->GetInstruction(pc);
     switch (instruction.opcode) {
@@ -163,23 +158,23 @@ bool Process::Step() {
         break;
     case Code::Ldloc_0:
         DEBUG_STEP("ldloc.0");
-        stack->Push(cur->locals[0]); pc++;
+        stack->Push(locals[0]); pc++;
         break;
     case Code::Ldloc_1:
         DEBUG_STEP("ldloc.1");
-        stack->Push(cur->locals[1]); pc++;
+        stack->Push(locals[1]); pc++;
         break;
     case Code::Ldloc_2:
         DEBUG_STEP("ldloc.2");
-        stack->Push(cur->locals[2]); pc++;
+        stack->Push(locals[2]); pc++;
         break;
     case Code::Ldloc_3:
         DEBUG_STEP("ldloc.3");
-        stack->Push(cur->locals[3]); pc++;
+        stack->Push(locals[3]); pc++;
         break;
     case Code::Ldloc_S:
         DEBUG_STEP("ldloc.s %d", (int)instruction.oprand);
-        stack->Push(cur->locals[(int)instruction.oprand]); pc++;
+        stack->Push(locals[(int)instruction.oprand]); pc++;
         break;
     case Code::Br:
     case Code::Br_S:
@@ -316,7 +311,7 @@ bool Process::Step() {
         break;
     case Code::Ldloca_S:
         DEBUG_STEP("ldloca.s %d", (int)instruction.oprand);
-        stack->Push(cur->locals[(int)instruction.oprand]); pc++;
+        stack->Push(locals[(int)instruction.oprand]); pc++;
         break;
     case Code::Ble_S: {
         DEBUG_STEP("ble.s %d", (int)instruction.oprand);
@@ -510,7 +505,7 @@ void Process::CallMethod(int64_t key)
 
     //cur pointer changed
 
-    cur->ret = ret;
+    cur.ret = ret;
 }
 
 

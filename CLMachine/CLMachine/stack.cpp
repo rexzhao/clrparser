@@ -3,21 +3,21 @@
 #include <iostream>
 
 int Stack::GetTop() const {
-    return (int)_values.size();
+    return (int)_values.size() - base;
 }
 
 void Stack::SetTop(int n) {
-    _values.resize(n);
+    _values.resize(n + base);
 }
 
-const Value& Stack::operator[](int index) const {
+Value& Stack::operator[](int index) {
     int top = GetTop();
 
-    if (index >= 0 && index < (int)_values.size()) {
-        return _values[index];
+    if (index >= 0 && index < top) {
+        return _values[index + base];
     }
     else if (index < 0 && index >= -top) {
-        return _values[top + index];
+        return _values[top + base + index];
     }
     return Value::Nil;
 }
@@ -31,7 +31,7 @@ void Stack::Push(const Value& value) {
 }
 
 const Value Stack::Pop() {
-    assert(!_values.empty());
+    assert(_values.size() > base);
 
     Value value = _values.back();
     _values.pop_back();
@@ -43,6 +43,7 @@ const Value Stack::Pop() {
 
 #undef DEBUG_STACK
 
+/*
 void Stack::Exchange(IStack& target, int n) {
     int top = GetTop();
 
@@ -56,6 +57,15 @@ void Stack::Exchange(IStack& target, int n) {
     }
 
     _values.resize(start);
+}
+*/
 
-    top = start;
+
+void Stack::Clear() {
+    _values.resize(base);
+}
+
+
+void Stack::SetBase(int n) {
+    base = n;
 }

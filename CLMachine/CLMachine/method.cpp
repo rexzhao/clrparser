@@ -6,7 +6,7 @@
 
 int Method::Begin(Process* p)  const
 {
-    p->PushFrame(this, new WarpStack(p->GetBaseStack(), argCount >> 1));
+    p->PushFrame(this, argCount >> 1);
     return argCount & 1;
 }
 

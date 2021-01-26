@@ -16,25 +16,21 @@ class Process {
     struct Frame {
         const Method* method;
 
-        IStack* stack;
-        std::vector<Value> locals;
+        int local;
+        int stack;
+
         int pc;
         int ret;
 
-        Frame(const Method* method, IStack* stack) 
-            : method(method), stack(stack), pc(0), ret(0), locals(4) {
-        }
-
-        ~Frame() {
-            delete stack;
-        }
+        Frame() : method(0), local(0), stack(0), pc(0), ret(0) {};
     };
 
-    std::list<Frame*> frames;
+    std::list<Frame> frames;
 
 
-    Frame * cur;
+    Frame cur;
     Stack stack;
+    Stack locals;
 
     void StoreLocal(int pos, const Value& obj);
     void Return();
@@ -43,37 +39,38 @@ class Process {
 
 public:
     Process(const Context* context)
-        : context(context), cur(0) {
+        : context(context) {
     }
 
     ~Process() {
-        for (auto ite = frames.begin(); ite != frames.end(); ite++) {
-            delete* ite;
-        }
     }
 
-    void PushFrame(const Method* method, IStack * stack) {
-        if (cur != NULL) {
+    void PushFrame(const Method* method, int argCount) {
+        if (cur.method != NULL) {
             frames.push_back(cur);
         }
 
-        cur = new Frame(method, stack);
-        cur->pc = 0;
+        cur.method = method;
+        cur.local = locals.GetTop();
+        cur.pc = 0;
+        cur.ret = 0;
+        cur.stack = stack.GetTop() - argCount;
+
+        stack.SetBase(argCount);
+        locals.SetBase(cur.local);
     }
 
     const Context* GetContext() {
         return context;
     }
 
+    /*
     IStack* GetBaseStack() {
         return &stack;
     }
-
+    */
     IStack* GetStack() {
-        if (cur == NULL) {
-            return &stack;
-        }
-        return cur->stack;
+        return &stack;
     }
 
     void Start(const IMethod* method);

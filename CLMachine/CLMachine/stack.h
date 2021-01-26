@@ -19,7 +19,6 @@ public:
 
     virtual void Push(const Value& value) = 0;
     virtual const Value Pop() = 0;
-    // virtual void Exchange(IStack& target, int n) = 0;    
 };
 
 class Stack : public IStack {
@@ -41,5 +40,4 @@ public:
 
     void SetBase(int n);
     void Clear();
-    void Set(int n, Value v);
 };

@@ -7,17 +7,17 @@ int Stack::GetTop() const {
 }
 
 void Stack::SetTop(int n) {
-    _values.resize(n + base);
+    _values.resize(base + n);
 }
 
 Value& Stack::operator[](int index) {
     int top = GetTop();
 
     if (index >= 0 && index < top) {
-        return _values[index + base];
+        return _values[base + index];
     }
     else if (index < 0 && index >= -top) {
-        return _values[top + base + index];
+        return _values[base + top + index];
     }
     return Value::Nil;
 }
@@ -43,28 +43,9 @@ const Value Stack::Pop() {
 
 #undef DEBUG_STACK
 
-/*
-void Stack::Exchange(IStack& target, int n) {
-    int top = GetTop();
-
-    int start = top - n;
-    if (start < 0) {
-        start = 0;
-    }
-
-    for (int i = start; i < top; i++) {
-        target.Push(_values[i]);
-    }
-
-    _values.resize(start);
-}
-*/
-
-
 void Stack::Clear() {
     _values.resize(base);
 }
-
 
 void Stack::SetBase(int n) {
     base = n;

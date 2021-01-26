@@ -2,8 +2,7 @@
 
 
 #include <limits>
-
-
+#include <math.h>
 
 
 class MathOperatorAdd {
@@ -45,7 +44,7 @@ public:
 template<typename MathOperator>
 static const Value math_operator(const Value& a, const Value& b, const MathOperator& opt) {
     int t = (a.GetType() < b.GetType()) ? b.GetType() : a.GetType();
-    if (t == 0) {
+    if (t == Value::INTEGER) {
         long sum = opt.DO(a.ToInterger(), b.ToInterger());
         if (sum <= std::numeric_limits<int>::max() && sum >= std::numeric_limits<int>::min()) {
             return Value((int)sum);
@@ -55,11 +54,11 @@ static const Value math_operator(const Value& a, const Value& b, const MathOpera
         }
     }
 
-    if (t == 1) {
+    if (t == Value::LONG) {
         return Value(opt.DO(a.ToInterger(), b.ToInterger()));
     }
 
-    if (t == 2) {
+    if (t == Value::FLOAT) {
         double sum = opt.DO(a.ToNumber(), b.ToNumber());
         if (sum <= std::numeric_limits<float>::max() && sum >= std::numeric_limits<float>::min()) {
             return Value((float)sum);
@@ -69,7 +68,7 @@ static const Value math_operator(const Value& a, const Value& b, const MathOpera
         }
     }
 
-    if (t == 3) {
+    if (t == Value::DOUBLE) {
         return Value(opt.DO(a.ToNumber(), b.ToNumber()));
     }
     assert(false);
@@ -96,10 +95,10 @@ public:
 template<typename BitOperator>
 static const Value bit_operator(const Value& a, const Value& b, const BitOperator& opt) {
     assert(a.GetType() == b.GetType());
-    if (a.GetType() == 0) {
+    if (a.GetType() == Value::INTEGER) {
         return Value(opt.DO((int)a.ToInterger(), (int)b.ToInterger()));
     }
-    else if (a.GetType() == 1) {
+    else if (a.GetType() == Value::LONG) {
         return Value(opt.DO(a.ToInterger(), b.ToInterger()));
     }
 
@@ -139,16 +138,16 @@ const Value operator | (const Value& a, const Value& b) {
 
 const Value operator - (const Value& a) {
     int t = a.GetType();
-    if (t == 0) {
+    if (t == Value::INTEGER) {
         return Value((int)-a.ToInterger());
     }
-    else if (t == 1) {
+    else if (t == Value::LONG) {
         return Value(-a.ToInterger());
-}
-    else if (t == 2) {
+    }
+    else if (t == Value::FLOAT) {
         return Value((float)-a.ToNumber());
     }
-    else if (t == 3) {
+    else if (t == Value::DOUBLE) {
         return Value(-a.ToNumber());
     }
         

@@ -10,6 +10,24 @@ void Process::Start(const IMethod* method) {
     method->Begin(this);
 }
 
+void Process::PushFrame(const Method* method, int argCount) {
+    if (cur.method != NULL) {
+        frames.push_back(cur);
+    }
+
+    stack.SetBase(0);
+    locals.SetBase(0);
+
+    cur.method = method;
+    cur.local = locals.GetTop();
+    cur.pc = 0;
+    cur.ret = 0;
+    cur.stack = stack.GetTop() - argCount;
+
+    stack.SetBase(cur.stack);
+    locals.SetBase(cur.local);
+}
+
 void Process::Return() {
     int retCount = 0;
     Value retValue;
@@ -18,25 +36,32 @@ void Process::Return() {
         if (retCount > 0) {
             retValue = stack.Pop();
         }
-        stack.Clear();
     }
 
     if (frames.empty()) {
-        cur.method = NULL;
+        cur.Reset();
         return;
     }
-
 
     cur = frames.back();
     frames.pop_back();
 
+    stack.Clear();
+    stack.SetBase(cur.stack);
+
     if (retCount > 0) {
-        stack.SetBase(cur.stack);
         stack.Push(retValue);
     }
+
+    locals.Clear();
+    locals.SetBase(cur.local);
 }
 
 void Process::StoreLocal(int pos, const Value& obj) {
+    if (locals.GetTop() <= pos) {
+        locals.SetTop(pos + 1);
+    }
+
     locals[pos] = obj;
 }
 
@@ -51,21 +76,20 @@ bool Process::Step() {
     int& pc = cur.pc;
 
     Instruction instruction = method->GetInstruction(pc);
+
+    // method->Dump(this, pc);
+
     switch (instruction.opcode) {
     case Code::Ret:
-        DEBUG_STEP("ret %d", cur->ret);
         pc++; Return();
         break;
     case Code::Nop: 
-        DEBUG_STEP("nop");
         pc++;
         break;
     case Code::Break:
         pc = (int)instruction.oprand;
-        DEBUG_STEP("break %d", pc);
         break;
     case Code::Ldstr:
-        DEBUG_STEP("ldstr %s", context->GetString((int)instruction.oprand));
         stack->Push(context->GetString((int)instruction.oprand)); pc++;
         break;
     case Code::Call:
@@ -73,149 +97,135 @@ bool Process::Step() {
         CallMethod(instruction.oprand);
         break;
     case Code::Ldnull:
-        DEBUG_STEP("ldnull");
         stack->Push(Value::Nil); pc++;
         break;
     case Code::Ldc_I4_M1:
-        DEBUG_STEP("ldc.i4.m1");
         stack->Push(Value((int)-1)); pc++;
         break;
     case Code::Ldc_I4_0:
-        DEBUG_STEP("ldc.i4.0");
         stack->Push(Value((int)0)); pc++;
         break;
     case Code::Ldc_I4_1:
-        DEBUG_STEP("ldc.i4.1");
         stack->Push(Value((int)1)); pc++;
         break;
     case Code::Ldc_I4_2:
-        DEBUG_STEP("ldc.i4.2");
         stack->Push(Value((int)2)); pc++;
         break;
     case Code::Ldc_I4_3:
-        DEBUG_STEP("ldc.i4.3");
         stack->Push(Value((int)3)); pc++;
         break;
     case Code::Ldc_I4_4:
-        DEBUG_STEP("ldc.i4.4");
         stack->Push(Value((int)4)); pc++;
         break;
     case Code::Ldc_I4_5:
-        DEBUG_STEP("ldc.i4.5");
         stack->Push(Value((int)5)); pc++;
         break;
     case Code::Ldc_I4_6:
-        DEBUG_STEP("ldc.i4.6");
         stack->Push(Value((int)6)); pc++;
         break;
     case Code::Ldc_I4_7:
-        DEBUG_STEP("ldc.i4.7");
         stack->Push(Value((int)7)); pc++;
         break;
     case Code::Ldc_I4_8:
-        DEBUG_STEP("ldc.i4.8");
         stack->Push(Value((int)8)); pc++;
         break;
     case Code::Ldc_I4_S:
-        DEBUG_STEP("ldc.i4.s %d", (int)instruction.oprand);
         stack->Push((int)instruction.oprand); pc++;
         break;
     case Code::Ldc_I4:
-        DEBUG_STEP("ldc.i4 %d", (int)instruction.oprand);
         stack->Push((int)instruction.oprand); pc++;
         break;
     case Code::Ldc_I8:
-        DEBUG_STEP("ldc.i4 %ld", (long)instruction.oprand);
         stack->Push((long)instruction.oprand); pc++;
         break;
     case Code::Ldc_R4:
-        DEBUG_STEP("ldc.r4 %f", (float)(*(double*)(&instruction.oprand)));
         stack->Push((float)(*(double*)(&instruction.oprand))); pc++;
         break;
     case Code::Ldc_R8:
-        DEBUG_STEP("ldc.r4 %lf", (*(double*)(&instruction.oprand)));
         stack->Push(*(double*)(&instruction.oprand)); pc++;
         break;
     case Code::Stloc_0:
-        DEBUG_STEP("stloc.0");
         StoreLocal(0, stack->Pop()); pc++;
         break;
     case Code::Stloc_1:
-        DEBUG_STEP("stloc.1");
         StoreLocal(1, stack->Pop()); pc++;
         break;
     case Code::Stloc_2:
-        DEBUG_STEP("stloc.2");
         StoreLocal(2, stack->Pop()); pc++;
         break;
     case Code::Stloc_3:
-        DEBUG_STEP("stloc.3");
         StoreLocal(3, stack->Pop()); pc++;
         break;
     case Code::Stloc_S:
-        DEBUG_STEP("stloc.s %d", (int)instruction.oprand);
         StoreLocal((int)instruction.oprand, stack->Pop()); pc++;
         break;
     case Code::Ldloc_0:
-        DEBUG_STEP("ldloc.0");
         stack->Push(locals[0]); pc++;
         break;
     case Code::Ldloc_1:
-        DEBUG_STEP("ldloc.1");
         stack->Push(locals[1]); pc++;
         break;
     case Code::Ldloc_2:
-        DEBUG_STEP("ldloc.2");
         stack->Push(locals[2]); pc++;
         break;
     case Code::Ldloc_3:
-        DEBUG_STEP("ldloc.3");
         stack->Push(locals[3]); pc++;
         break;
     case Code::Ldloc_S:
-        DEBUG_STEP("ldloc.s %d", (int)instruction.oprand);
         stack->Push(locals[(int)instruction.oprand]); pc++;
         break;
     case Code::Br:
     case Code::Br_S:
-        DEBUG_STEP("br %d", (int)instruction.oprand);
         pc = (int)instruction.oprand;
         break;
     case Code::Pop:
-        DEBUG_STEP("pop");
         stack->Pop(); pc++;
         break;
     case Code::Ldarg_0:
-        DEBUG_STEP("ldarg.0");
         stack->Push(stack->Get(0)); pc++;
         break;
     case Code::Ldarg_1:
-        DEBUG_STEP("ldarg.1");
         stack->Push(stack->Get(1)); pc++;
         break;
     case Code::Ldarg_2:
-        DEBUG_STEP("ldarg.2");
         stack->Push(stack->Get(2)); pc++;
         break;
     case Code::Ldarg_3:
-        DEBUG_STEP("ldarg.3");
         stack->Push(stack->Get(3)); pc++;
         break;
     case Code::Ldarg_S:
-        DEBUG_STEP("ldarg.s %d", (int)instruction.oprand);
         stack->Push(stack->Get((int)instruction.oprand)); pc++;
         break;
     case Code::Cgt: {
-        DEBUG_STEP("cgt");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1.ToNumber() > v2.ToNumber() ? 1 : 0);
         pc++;
+        break;
     }
-                  break;
+    case Code::Cgt_Un:
+        assert(false);
+        break;
+    case Code::Ceq: {
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        stack->Push(v1.ToNumber() == v2.ToNumber() ? 1 : 0);
+        pc++;
+        break;
+    }
+    case Code::Clt:
+    {
+        Value v2 = stack->Pop();
+        Value v1 = stack->Pop();
+        stack->Push(v1.ToNumber() < v2.ToNumber() ? 1 : 0);
+        pc++;
+        break;
+    }
+    case Code::Clt_Un:
+        assert(false);
+        break;
     case Code::Brfalse:
     case Code::Brfalse_S:
-        DEBUG_STEP("brfalse");
         if (stack->Pop().IsZero()) {
             pc = (int)instruction.oprand;
         }
@@ -225,7 +235,6 @@ bool Process::Step() {
         break;
     case Code::Brtrue:
     case Code::Brtrue_S:
-        DEBUG_STEP("brtrue");
         if (!stack->Pop().IsZero()) {
             pc = (int)instruction.oprand;
         }
@@ -233,37 +242,31 @@ bool Process::Step() {
             pc++;
         }
         break;
-        // TODO:
     case Code::Add: {
-        DEBUG_STEP("add");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 + v2); pc++;
     }
                   break;
     case Code::Sub: {
-        DEBUG_STEP("sub");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 - v2); pc++;
     }
                   break;
     case Code::Mul: {
-        DEBUG_STEP("mul");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 * v2); pc++;
     }
                   break;
     case Code::Div: {
-        DEBUG_STEP("div");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 / v2); pc++;
+        break;
     }
-                  break;
     case Code::Rem: {
-        DEBUG_STEP("rem");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 % v2); pc++;
@@ -271,13 +274,11 @@ bool Process::Step() {
     break;
     case Code::Neg:
     {
-        DEBUG_STEP("neg");
         stack->Push(-stack->Pop()); pc++;
+        break;
     }
-    break;
 	case Code::Div_Un: {
         assert(false);
-		DEBUG_STEP("div.un");
 		Value v2 = stack->Pop();
 		Value v1 = stack->Pop();
 		uint32_t u1 = v1.ToInterger();
@@ -289,19 +290,18 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::And: {
-        DEBUG_STEP("and");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 & v2); pc++;
+        break;
+
     }
-                  break;
     case Code::Or: {
-        DEBUG_STEP("or");
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         stack->Push(v1 | v2); pc++;
+        break;
     }
-                 break;
     case Code::Xor:
     case Code::Shl:
     case Code::Shr:
@@ -310,11 +310,9 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::Ldloca_S:
-        DEBUG_STEP("ldloca.s %d", (int)instruction.oprand);
         stack->Push(locals[(int)instruction.oprand]); pc++;
         break;
     case Code::Ble_S: {
-        DEBUG_STEP("ble.s %d", (int)instruction.oprand);
         Value v2 = stack->Pop();
         Value v1 = stack->Pop();
         if (v1.ToNumber() < v2.ToNumber()) {
@@ -323,15 +321,13 @@ bool Process::Step() {
         else {
             pc++;
         }
+        break;
     }
-                    break;
     case Code::Dup:
-        DEBUG_STEP("dup");
         stack->Push(stack->Pop()); pc++;
         break;
     case Code::Jmp:
         assert(false);
-        DEBUG_STEP("jmp");
         break;
     case Code::Ldarga_S:
     case Code::Calli:
@@ -464,10 +460,6 @@ bool Process::Step() {
     case Code::Stind_I:
     case Code::Conv_U:
     case Code::Arglist:
-    case Code::Ceq:
-    case Code::Cgt_Un:
-    case Code::Clt:
-    case Code::Clt_Un:
     case Code::Ldftn:
     case Code::Ldvirtftn:
     case Code::Ldarg:
@@ -500,7 +492,6 @@ bool Process::Step() {
 
 void Process::CallMethod(int64_t key)
 {
-    DEBUG_STEP("call %s", context->GetMemberName(key).c_str());
     int ret = context->GetMethod(key)->Begin(this);
 
     //cur pointer changed

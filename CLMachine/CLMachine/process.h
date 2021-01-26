@@ -23,6 +23,11 @@ class Process {
         int ret;
 
         Frame() : method(0), local(0), stack(0), pc(0), ret(0) {};
+
+        void Reset() {
+            method = 0;
+            local = stack = pc = ret = 0;
+        }
     };
 
     std::list<Frame> frames;
@@ -45,20 +50,7 @@ public:
     ~Process() {
     }
 
-    void PushFrame(const Method* method, int argCount) {
-        if (cur.method != NULL) {
-            frames.push_back(cur);
-        }
-
-        cur.method = method;
-        cur.local = locals.GetTop();
-        cur.pc = 0;
-        cur.ret = 0;
-        cur.stack = stack.GetTop() - argCount;
-
-        stack.SetBase(argCount);
-        locals.SetBase(cur.local);
-    }
+    void PushFrame(const Method* method, int argCount);
 
     const Context* GetContext() {
         return context;

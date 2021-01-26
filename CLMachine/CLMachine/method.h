@@ -50,4 +50,7 @@ public:
     Instruction GetInstruction(int i) const;
 
     virtual int Begin(Process* process)  const;
+
+    void Dump(Process* process, int pc) const;
+    void DumpInstruction(Process* process, const Instruction& instruction) const;
 };

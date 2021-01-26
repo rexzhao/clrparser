@@ -2,14 +2,14 @@
 
 #include <map>
 
-static std::map<long, int> memorys;
+static std::map<uint64_t, int> memorys;
 
 
-int ref(long key) {
+int ref(uint64_t key) {
 	return ++memorys[key];
 }
 
-int unref(long key) {
+int unref(uint64_t key) {
 	int c = memorys[key];
 	assert(c >= 1);
 

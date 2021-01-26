@@ -27,7 +27,7 @@ Context::~Context() {
 
 
 void Context::splitFullName(const std::string& fullname, std::string& Namespace, std::string& TypeName, std::string& Name) {
-    int idx = fullname.find_first_of(':');
+    size_t idx = fullname.find_first_of(':');
     assert(fullname[idx + 1] == ':');
 
     std::string s1 = fullname.substr(0, idx);
@@ -96,6 +96,7 @@ void Context::Register(std::string Namespace, std::string TypeName, std::string 
 void Context::Register(std::string Namespace, std::string TypeName, std::string Name, IMethod* m) {
     int64_t key = GetMemberKey(Namespace, TypeName, Name);
     if (key == 0) {
+        delete m;
         return;
     }
 
@@ -204,7 +205,7 @@ unsigned char Context::ReadU8(std::istream& f) {
 void Context::ReadStringTable(std::istream& f) {
     int count = ReadI32(f);
     for (int i = 0; i < count; i++) {
-        int size = ReadI32(f);
+        size_t size = ReadI32(f);
 
         char* c = new char[size + 1];
         f.read(c, size);
@@ -230,7 +231,7 @@ void Context::ReadBlobTable(std::istream& f) {
     }
 }
 
-const char* Context::GetString(int index) const {
+const char* Context::GetString(size_t index) const {
     return strings[index - 1];
 }
 
@@ -249,22 +250,22 @@ int Context::FindString(const char* str) const
     return 0;
 }
 
-const char* Context::GetBlob(int index, int* size) const {
+const char* Context::GetBlob(size_t index, size_t * size) const {
     auto value = blobs[index - 1];
     if (size) *size = value.second;
     return value.first;
 }
 
 std::vector<int> Context::GetSwitchArg(int index) const {
-    int size;
+    size_t size;
     const char* ptr = GetBlob(index, &size);
     assert(size % 4 == 0);
 
-    int count = size / 4;
+    size_t count = size / 4;
 
     std::vector<int> ret(count);
 
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         uint32_t v;
         if (bigEndian) {
             char c[4];
@@ -276,7 +277,7 @@ std::vector<int> Context::GetSwitchArg(int index) const {
             v = *(uint32_t*)c;
         }
         else {
-            v = *(uint32_t*)(ptr + i * 4);
+            v = *(uint32_t*)(ptr + (i * 4));
         }
         ret[i] = v;
     }

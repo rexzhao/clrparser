@@ -14,7 +14,7 @@ class Context {
     std::map<int64_t, IMethod*> method;
 
     std::vector<const char* > strings;
-    std::vector<std::pair<const char*, int> > blobs;
+    std::vector<std::pair<const char*, size_t> > blobs;
 
     int64_t ReadI64(std::istream& f);
     int32_t ReadI32(std::istream& f);
@@ -35,8 +35,8 @@ public:
     ~Context();
 
     void Read(std::istream& f);
-    const char* GetString(int index) const;
-    const char* GetBlob(int index, int* size) const;
+    const char* GetString(size_t index) const;
+    const char* GetBlob(size_t index, size_t* size) const;
 
     int FindString(const char* str) const;
     int FindString(const std::string& str) const;

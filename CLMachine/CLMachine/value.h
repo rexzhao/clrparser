@@ -144,15 +144,14 @@ public:
     }
 
     static Value Nil;
+
+    Value* Add(Value* v);
+    Value* Sub(Value* v);
+    Value* Mul(Value* v);
+    Value* Div(Value* v);
+    Value* Rem(Value* v);
+    Value* And(Value* v);
+    Value* Or(Value* v);
+    Value* Neg();
 };
-
-const Value operator + (const Value& a, const Value& b);
-const Value operator - (const Value& a, const Value& b);
-const Value operator * (const Value& a, const Value& b);
-const Value operator / (const Value& a, const Value& b);
-const Value operator % (const Value& a, const Value& b);
-const Value operator - (const Value& a);
-
-const Value operator & (const Value& a, const Value& b);
-const Value operator | (const Value& a, const Value& b);
 

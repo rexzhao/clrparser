@@ -7,57 +7,69 @@
 template<class T>
 class Array {
     T* ptr;
-    int size;
-    int cap;
+    int _size;
+    int _cap;
 
     void grow() {
-        cap *= 2;
+        _cap *= 2;
         if (ptr == 0) {
-            ptr = (T*)malloc(sizeof(T) * cap);
+            ptr = (T*)malloc(sizeof(T) * _cap);
         }
         else {
-            ptr = (T*)realloc(ptr, sizeof(T) * cap);
+            ptr = (T*)realloc(ptr, sizeof(T) * _cap);
         }
     }
 
 public:
     Array() {
-        size = 0;
+        _size = 0;
         ptr = 0;
-        cap = 2;
+        _cap = 2;
         grow();
     }
 
-    int Size() {
-        return size;
+    int size() const {
+        return _size;
     }
 
-    void Set(int index, T* v) {
-        assert(index <= size);
+    void resize(int n) {
+        if (n <= _size) {
+            _size = n;
+        }
+        else {
+            while (_cap < n) {
+                grow();
+            }
+            _size = n;
+        }
+    }
+
+    void set(int index, T * v) {
+        assert(index <= _size);
         ptr[index] = *v;
     }
 
-    T * Push(T v) {
-        if (size == cap) {
+    T * push(T * v) {
+        if (_size == _cap) {
             grow();
         }
 
-        ptr[size++] = v;
+        ptr[_size++] = *v;
 
-        return ptr + (size - 1);
+        return ptr + (_size - 1);
     }
 
-    T* Pop() {
-        return ptr + (--size);
+    T* pop() {
+        return ptr + (--_size);
     }
 
-    T* Last() {
-        if (size <= 0) return NULL;
+    T* last() {
+        if (_size <= 0) return NULL;
 
-        return ptr + (size - 1);
+        return ptr + (_size - 1);
     }
 
-    T* Get(int index) {
+    T* get(int index) {
         return ptr + index;
     }
 };
@@ -69,18 +81,28 @@ public:
     virtual int GetTop() const = 0;
     virtual void SetTop(int n) = 0;
 
-    virtual Value& operator[](int index) = 0;
+    virtual Value* operator[](int index) = 0;
 
-    const Value& Get(int index) {
-        return this->operator[](index);
+    Value * Get(int index) {
+        return (*this)[index];
     }
 
-    virtual void Push(const Value& value) = 0;
-    virtual const Value Pop() = 0;
+    virtual void Set(int index, Value * value) = 0;
+
+    virtual void Push(Value * value) = 0;
+    virtual Value * Pop() = 0;
+
+
+    template<class T>
+    void Push(T ptr) {
+        Value v(ptr);
+        Push(&v);
+    }
 };
 
 class Stack : public IStack {
-    std::vector<Value> _values;
+    Array<Value> _values;
+    // std::vector<Value> _values;
 
     int base;
 
@@ -90,10 +112,11 @@ public:
     virtual int GetTop() const;
     virtual void SetTop(int n);
 
-    virtual Value& operator[](int index);
+    virtual Value * operator[](int index);
+    virtual void Set(int index, Value * value);
 
-    virtual void Push(const Value& value);
-    virtual const Value Pop();
+    virtual void Push(Value* value);
+    virtual Value * Pop();
     // virtual void Exchange(IStack& target, int n);
 
     void SetBase(int n);

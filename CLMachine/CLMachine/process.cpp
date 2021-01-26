@@ -17,7 +17,7 @@ void Process::PushFrame(const Method* method, int argCount) {
     Frame frame;
     memset(&frame, 0, sizeof(Frame));
 
-    cur = frames.Push(frame);
+    cur = frames.push(&frame);
 
     cur->method = method;
     cur->local = locals.GetTop();
@@ -35,18 +35,18 @@ void Process::Return() {
     if (cur != NULL) {
         retCount = cur->ret;
         if (retCount > 0) {
-            retValue = stack.Pop();
+            retValue = *(stack.Pop());
         }
     }
 
-    if (frames.Size() == 0) {
+    if (frames.size() == 0) {
         cur = NULL;
         return;
     }
 
-    frames.Pop();
+    frames.pop();
 
-    cur = frames.Last();
+    cur = frames.last();
 
     stack.Clear();
     locals.Clear();
@@ -55,19 +55,19 @@ void Process::Return() {
         stack.SetBase(cur->stack);
 
         if (retCount > 0) {
-            stack.Push(retValue);
+            stack.Push(&retValue);
         }
 
         locals.SetBase(cur->local);
     }
 }
 
-void Process::StoreLocal(int pos, const Value& obj) {
+void Process::StoreLocal(int pos, Value * obj) {
     if (locals.GetTop() <= pos) {
         locals.SetTop(pos + 1);
     }
 
-    locals[pos] = obj;
+    locals.Set(pos, obj);
 }
 
 bool Process::Step() {
@@ -165,16 +165,16 @@ bool Process::Step() {
         StoreLocal((int)instruction.oprand, stack->Pop()); pc++;
         break;
     case Code::Ldloc_0:
-        stack->Push(locals[0]); pc++;
+        stack->Push(*locals[0]); pc++;
         break;
     case Code::Ldloc_1:
-        stack->Push(locals[1]); pc++;
+        stack->Push(*locals[1]); pc++;
         break;
     case Code::Ldloc_2:
-        stack->Push(locals[2]); pc++;
+        stack->Push(*locals[2]); pc++;
         break;
     case Code::Ldloc_3:
-        stack->Push(locals[3]); pc++;
+        stack->Push(*locals[3]); pc++;
         break;
     case Code::Ldloc_S:
         stack->Push(locals[(int)instruction.oprand]); pc++;
@@ -202,9 +202,9 @@ bool Process::Step() {
         stack->Push(stack->Get((int)instruction.oprand)); pc++;
         break;
     case Code::Cgt: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1.ToNumber() > v2.ToNumber() ? 1 : 0);
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        stack->Push(v1->ToNumber() > v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
@@ -212,17 +212,17 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::Ceq: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1.ToNumber() == v2.ToNumber() ? 1 : 0);
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        stack->Push(v1->ToNumber() == v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
     case Code::Clt:
     {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1.ToNumber() < v2.ToNumber() ? 1 : 0);
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        stack->Push(v1->ToNumber() < v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
@@ -231,7 +231,7 @@ bool Process::Step() {
         break;
     case Code::Brfalse:
     case Code::Brfalse_S:
-        if (stack->Pop().IsZero()) {
+        if (stack->Pop()->IsZero()) {
             pc = (int)instruction.oprand;
         }
         else {
@@ -240,7 +240,7 @@ bool Process::Step() {
         break;
     case Code::Brtrue:
     case Code::Brtrue_S:
-        if (!stack->Pop().IsZero()) {
+        if (!stack->Pop()->IsZero()) {
             pc = (int)instruction.oprand;
         }
         else {
@@ -250,9 +250,9 @@ bool Process::Step() {
     case Code::Blt:
     case Code::Blt_S:
     {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        if (v1.ToNumber() < v2.ToNumber()) {
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        if (v1->ToNumber() < v2->ToNumber()) {
             pc = (int)instruction.oprand;
         }
         else {
@@ -262,46 +262,46 @@ bool Process::Step() {
     }
         break;
     case Code::Add: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 + v2); pc++;
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        stack->Push(v1->Add(v2)); pc++;
     }
                   break;
     case Code::Sub: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 - v2); pc++;
+        Value* v2 = stack->Pop();
+        Value* v1 = stack->Pop();
+        stack->Push(v1->Sub(v2)); pc++;
     }
                   break;
     case Code::Mul: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 * v2); pc++;
+        Value* v2 = stack->Pop();
+        Value* v1 = stack->Pop();
+        stack->Push(v1->Mul(v2)); pc++;
     }
                   break;
     case Code::Div: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 / v2); pc++;
+        Value* v2 = stack->Pop();
+        Value* v1 = stack->Pop();
+        stack->Push(v1->Div(v2)); pc++;
         break;
     }
     case Code::Rem: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 % v2); pc++;
+        Value* v2 = stack->Pop();
+        Value* v1 = stack->Pop();
+        stack->Push(v1->Rem(v2)); pc++;
     }
     break;
     case Code::Neg:
     {
-        stack->Push(-stack->Pop()); pc++;
+        stack->Push(stack->Pop()->Neg()); pc++;
         break;
     }
 	case Code::Div_Un: {
         assert(false);
-		Value v2 = stack->Pop();
-		Value v1 = stack->Pop();
-		uint32_t u1 = v1.ToInterger();
-		uint32_t u2 = v2.ToInterger();
+		Value* v2 = stack->Pop();
+		Value* v1 = stack->Pop();
+		uint32_t u1 = v1->ToInterger();
+		uint32_t u2 = v2->ToInterger();
 		stack->Push((int)(u1 / u2)); pc++;
 	}
 		break;
@@ -309,16 +309,16 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::And: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 & v2); pc++;
+        Value* v2 = stack->Pop();
+        Value* v1 = stack->Pop();
+        stack->Push(v1->Add(v2)); pc++;
         break;
 
     }
     case Code::Or: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        stack->Push(v1 | v2); pc++;
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        stack->Push(v1->Or(v2)); pc++;
         break;
     }
     case Code::Xor:
@@ -332,9 +332,9 @@ bool Process::Step() {
         stack->Push(locals[(int)instruction.oprand]); pc++;
         break;
     case Code::Ble_S: {
-        Value v2 = stack->Pop();
-        Value v1 = stack->Pop();
-        if (v1.ToNumber() < v2.ToNumber()) {
+        Value * v2 = stack->Pop();
+        Value * v1 = stack->Pop();
+        if (v1->ToNumber() < v2->ToNumber()) {
             pc = (int)instruction.oprand;
         }
         else {

@@ -32,7 +32,7 @@ class Process {
     Stack stack;
     Stack locals;
 
-    void StoreLocal(int pos, const Value& obj);
+    void StoreLocal(int pos, Value* obj);
     void Return();
 
     void CallMethod(int64_t key);

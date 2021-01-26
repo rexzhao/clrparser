@@ -302,7 +302,8 @@ void Context::Run(const std::string& fullName, const std::vector<std::string>& a
     IStack* stack = p.GetStack();
 
     for (auto ite = args.begin(); ite != args.end(); ite++) {
-        stack->Push(ite->c_str());
+        Value v(ite->c_str());
+        stack->Push(&v);
     }
 
     m->Begin(&p);

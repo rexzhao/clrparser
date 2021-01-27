@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "memory.h"
 
@@ -9,33 +10,29 @@ class Object {
 
 };
 
-class Value {
+struct Value {
     int type;
 
     union {
-        int i;
-        long l;
+        long i;
         double d;
-        float f;
-        Object* o;
-        const char* s;
+        void* p;
     } value;
-public:
+
     enum Type {
         INTEGER,
-        LONG,
-        FLOAT,
-        DOUBLE,
-        OBJECT,
-        STRING,
+        NUMBER,
+        POINTER,
     };
 
     Value(int v) { type = INTEGER; value.i = v; }
-    Value(long v) { type = LONG; value.l = v; }
-    Value(float v) { type = FLOAT; value.f = v; }
-    Value(double v) { type = DOUBLE; value.d = v; }
-    Value(Object* v = 0) { type = OBJECT; value.o = ref(v); }
-    Value(const char* v) { type = STRING;  value.s = ref(v); }
+    Value(long v) { type = INTEGER; value.i = v; }
+
+    Value(float v) { type = NUMBER; value.d = v; }
+    Value(double v) { type = NUMBER; value.d = v; }
+    Value(void * v = 0) { type = POINTER; value.p = v; }
+    Value(const char * v = 0) { type = POINTER; value.p = (void*)v; }
+    Value(char* v = 0) { type = POINTER; value.p = (void*)v; }
 
     /*
     Value(const Value& v) {
@@ -73,87 +70,145 @@ public:
     }
     */
     void Release() {
-        if (type == OBJECT) {
-            unref(value.o);
-        }
-        else if (type == STRING) {
-            unref(value.s);
-        }
-
-        type = OBJECT;
-        value.o = 0;
+        type = POINTER;
+        value.p = 0;
     }
 
 
-    int GetType() const {
+    inline int GetType() const {
         return type;
     }
 
-    bool IsZero() const {
+    inline bool IsZero() const {
         if (type == INTEGER) return value.i == 0;
-        if (type == LONG) return value.l == 0;
-        if (type == FLOAT) return value.f == 0;
-        if (type == DOUBLE) return value.d == 0;
-        if (type == OBJECT) return value.o == 0;
-        if (type == STRING) return value.s == 0;
+        if (type == NUMBER) return value.d == 0;
         assert(false);
         return true;
     }
 
-    long ToInterger() const {
+    inline long ToInterger() const {
         if (type == INTEGER) return value.i;
-        if (type == LONG) return value.l;
         assert(false);
         return 0;
     }
 
-    double ToNumber() const {
+    inline double ToNumber() const {
         if (type == INTEGER) return value.i;
-        if (type == LONG) return value.l;
-        if (type == FLOAT) return value.f;
-        if (type == DOUBLE) return value.d;
+        if (type == NUMBER) return value.d;
         assert(false);
         return 0;
     }
 
     const char * ToString(char *c ) const {
         if (type == INTEGER) {
-            snprintf(c, 256, "%d", value.i);
+            snprintf(c, 256, "%ld", value.i);
         }
-        else if (type == LONG) {
-            snprintf(c, 256, "%ld", value.l);
-        }
-        else if (type == FLOAT) {
-            snprintf(c, 256, "%f", value.f);
-        }
-        else if (type == DOUBLE) {
+        else if (type == NUMBER) {
             snprintf(c, 256, "%lf", value.d);
         }
-        else if (type == OBJECT) {
-            snprintf(c, 256, "%p", value.o);
+        else if (type == POINTER) {
+            snprintf(c, 256, "%s", (const char*)value.p);
         }
-        else {
-            snprintf(c, 256, "%s", value.s);
-        }
-        
+
         return c;
     }
 
     const char* ToStr() const {
-        if (type == STRING) return value.s;
+        if (type == POINTER) return (const char*)value.p;
         assert(false);
         return 0;
     }
 
     static Value Nil;
 
-    Value* Add(Value* v);
-    Value* Sub(Value* v);
-    Value* Mul(Value* v);
-    Value* Div(Value* v);
-    Value* Rem(Value* v);
-    Value* And(Value* v);
-    Value* Or(Value* v);
-    Value* Neg();
+#define VALUE_MATH(a, o, b) \
+do { \
+    int t = (a->type < b->type) ? b->type : a->type; \
+    if (t == Value::INTEGER) { \
+        a->type = Value::INTEGER; \
+        a->value.i = a->value.i o b->value.i; \
+    } \
+    else if (t == Value::NUMBER) { \
+        a->type = Value::NUMBER; \
+        a->value.d = a->ToNumber() o b->ToNumber(); \
+    } \
+    else { \
+        assert(false); \
+    } \
+} while(0)
+
+
+#define VALUE_BIT(a, o, b) \
+do { \
+    assert(a->GetType() == b->GetType()); \
+    int t = a->GetType(); \
+    if (t == Value::INTEGER) { \
+        a->value.i = a->value.i o b->value.i; \
+    } else { \
+        assert(false); \
+    } \
+} while(0)
+
+
+    inline Value* Add(Value* v) {
+        VALUE_MATH(this, +, v);
+        return this;
+    }
+
+    inline Value* Sub(Value* v) {
+        VALUE_MATH(this, -, v);
+        return this;
+    }
+    inline Value* Mul(Value* v) {
+        VALUE_MATH(this, *, v);
+        return this;
+    }
+    inline Value* Div(Value* v) {
+        VALUE_MATH(this, / , v);
+        return this;
+    }
+    inline Value* Rem(Value* v) {
+        Value* a = this;
+        Value* b = v;
+        int t = (a->type < b->type) ? b->type : a->type;
+        if (t == Value::INTEGER) {
+            a->type = INTEGER;
+            a->value.i = a->value.i % b->value.i;
+        }
+        else if (t == Value::NUMBER) {
+            a->type = Value::NUMBER;
+            a->value.d = fmod(a->ToNumber(), b->ToNumber());
+        }
+        else {
+            assert(false);
+        }
+
+        return this;
+    }
+
+    inline Value* And(Value* v) {
+        VALUE_BIT(this, &, v);
+        return this;
+    }
+
+    inline Value* Or(Value* v) {
+        VALUE_BIT(this, | , v);
+        return this;
+    }
+
+    inline Value* Neg() {
+        if (this->type == Value::INTEGER) {
+            this->value.i = -this->value.i;
+        }
+        else if (this->type == Value::NUMBER) {
+            this->value.d = -this->value.d;
+        }
+        else {
+            assert(false);
+        }
+
+
+        return this;
+    }
 };
 

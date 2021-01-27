@@ -11,7 +11,16 @@
 #include "stack.h"
 
 class Context {
-    std::map<int64_t, IMethod*> method;
+    struct MethodInfo {
+        int64_t first;
+        IMethod* second;
+    };
+
+    MethodInfo* methods;
+    int methodCount;
+
+    // std::vector<std::pair<int64_t, IMethod*>> methods;
+    // std::map<int64_t, IMethod*> method;
 
     std::vector<const char* > strings;
     std::vector<std::pair<const char*, size_t> > blobs;
@@ -22,7 +31,9 @@ class Context {
 
     std::vector<int> GetSwitchArg(int index)  const;
 
-    void ReadMethod(std::istream& f);
+    Method* ReadMethod(std::istream& f);
+
+    void ReadMethodTable(std::istream& f);
     void ReadStringTable(std::istream& f);
     void ReadBlobTable(std::istream& f);
 
@@ -50,15 +61,18 @@ public:
 
     IMethod* GetMethod(int64_t id)  const;
 
+    IMethod* GetMethodByIndex(int idx)  const;
+
     std::string GetMemberName(int64_t key)  const;
+    std::string GetMemberNameByIndex(int idx)  const;
 
     int64_t GetMemberKey(const std::string& fullName) const;
 
     int64_t GetMemberKey(const std::string& Namespace, const std::string& TypeName, const std::string& Name)  const;
 
-    void Register(const std::string& fullName, int (*func)(const Context* context, IStack* stack));
+    void Register(const std::string& fullName, int (*func)(Process* p));
     void Register(const std::string& fullName, IMethod* m);
 
-    void Register(std::string Namespace, std::string TypeName, std::string Name, int (*func)(const Context* context, IStack* stack));
+    void Register(std::string Namespace, std::string TypeName, std::string Name, int (*func)(Process* p));
     void Register(std::string Namespace, std::string TypeName, std::string Name, IMethod* m);
 };

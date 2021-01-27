@@ -9,57 +9,37 @@
 class Context;
 class IMethod;
 class Method;
+struct Instruction;
 
 
+struct CallInfo {
+    const IMethod* method;
 
-class Process {
+    int local;
+    int localCount;
+
+    int stack;
+    int stackCount;
+    
+    int pc;
+    int ret;
+};
+
+
+struct Process {
     const Context* context;
 
-    struct Frame {
-        const Method* method;
+    CallInfo* base_ci;
+    CallInfo* ci;
+    int size_ci;
 
-        int local;
-        int stack;
+    SimpleStack local;
+    SimpleStack stack;
 
-        int pc;
-        int ret;
-    };
-
-    Array<Frame> frames;
-
-    Frame * cur;
-
-    Stack stack;
-    Stack locals;
-
-    void StoreLocal(int pos, Value* obj);
-    void Return();
-
-    void CallMethod(int64_t key);
-
-public:
-    Process(const Context* context)
-        : context(context), cur(0) {
-    }
-
-    ~Process() {
-    }
-
-    void PushFrame(const Method* method, int argCount);
-
-    const Context* GetContext() {
-        return context;
-    }
-
-    /*
-    IStack* GetBaseStack() {
-        return &stack;
-    }
-    */
-    IStack* GetStack() {
-        return &stack;
-    }
-
-    void Start(const IMethod* method);
-    bool Step();
+    const IMethod* method;
+    Instruction * pc;
+    int ret;
 };
+
+void prepare_call(Process* p, const IMethod* method, int arg);
+void run(const Context* context, int64_t key);

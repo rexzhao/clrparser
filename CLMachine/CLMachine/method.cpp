@@ -6,9 +6,12 @@
 
 #include <iostream>
 
+Instruction Instruction::ret(Code::Ret, 0);
+
 int Method::Begin(Process* p)  const
 {
-    p->PushFrame(this, argCount >> 1);
+    prepare_call(p, this, argCount >> 1);
+    // p->stack.base -= argCount >> 1;
     return argCount & 1;
 }
 
@@ -29,13 +32,13 @@ Instruction* Method::GetInstruction(int i) const
 
 
 void Method::DumpInstruction(Process* process, const Instruction& instruction) const {
-    const Context* context = process->GetContext();
+    const Context* context = process->context;
     switch (instruction.opcode) {
     case Code::Ret:        printf("ret");                                                               break;
     case Code::Nop:        printf("nop");                                                               break;
     case Code::Break:      printf("break %d", (int)instruction.oprand);                             break;
     case Code::Ldstr:      printf("ldstr %s", context->GetString((int)instruction.oprand));         break;
-    case Code::Call:       printf("call %s", context->GetMemberName(instruction.oprand).c_str());  break;
+    case Code::Call:       printf("call %s", context->GetMemberNameByIndex(instruction.oprand - 1).c_str());  break;
     case Code::Ldnull:     printf("ldnull");                                                            break;
     case Code::Ldc_I4_M1:  printf("ldc.i4.m1");                                                         break;
     case Code::Ldc_I4_0:   printf("ldc.i4.0");                                                          break;
@@ -100,13 +103,15 @@ void Method::DumpInstruction(Process* process, const Instruction& instruction) c
     case Code::Jmp:
         assert(false);
         break;
+    case Code::Clt:        printf("clt"); break;
+    case Code::Blt:        printf("blt %d", (int)instruction.oprand); break;
+    case Code::Blt_S:      printf("blt.s %d", (int)instruction.oprand); break;
     case Code::Ldarga_S:
     case Code::Calli:
     case Code::Starg_S:
     case Code::Beq_S:
     case Code::Bge_S:
     case Code::Bgt_S:
-    case Code::Blt_S:
     case Code::Bne_Un_S:
     case Code::Bge_Un_S:
     case Code::Bgt_Un_S:
@@ -116,7 +121,6 @@ void Method::DumpInstruction(Process* process, const Instruction& instruction) c
     case Code::Bge:
     case Code::Bgt:
     case Code::Ble:
-    case Code::Blt:
     case Code::Bne_Un:
     case Code::Bge_Un:
     case Code::Bgt_Un:
@@ -233,7 +237,6 @@ void Method::DumpInstruction(Process* process, const Instruction& instruction) c
     case Code::Arglist:
     case Code::Ceq:
     case Code::Cgt_Un:
-    case Code::Clt:
     case Code::Clt_Un:
     case Code::Ldftn:
     case Code::Ldvirtftn:
@@ -264,7 +267,7 @@ void Method::DumpInstruction(Process* process, const Instruction& instruction) c
 }
 
 void Method::Dump(Process * process, int pc) const {
-    std::cout << "=== " << process->GetContext()->GetMemberName(this->key) << " ===" << std::endl;
+    std::cout << "=== " << process->context->GetMemberName(this->key) << " ===" << std::endl;
     for (int i = 0; i < instructinsCount; i++) {
         printf("%s %4d ", (i == pc) ? "-> " : "   ", i);
         DumpInstruction(process, instructions[i]);

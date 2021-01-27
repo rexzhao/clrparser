@@ -1,213 +1,241 @@
+#include <string.h>
 
 #include "process.h"
 
 #include "method.h"
 #include "context.h"
 
-#define DEBUG_STEP(...) // do { printf(__VA_ARGS__); printf("\n");} while (0)
 
-void Process::Start(const IMethod* method) {
-    method->Begin(this);
+
+
+static void store_local(struct SimpleStack* stack, int index, Value* value) {
+    int count = stack->head + stack->size - stack->base;
+    if (count <= index) {
+        grow_stack(stack, index - count + 1);
+    }
+    stack->base[index] = *value;
+    if (stack->top < stack->base + index + 1) {
+        stack->top = stack->base + index + 1;
+    }
 }
 
-void Process::PushFrame(const Method* method, int argCount) {
-    stack.SetBase(0);
-    locals.SetBase(0);
+static void grow_ci(Process* p) {
+    if (p->ci == p->base_ci + p->size_ci) {
+        p->size_ci *= 2;
+        
+        size_t offset = p->ci - p->base_ci;
 
-    Frame frame;
-    memset(&frame, 0, sizeof(Frame));
-
-    cur = frames.push(&frame);
-
-    cur->method = method;
-    cur->local = locals.GetTop();
-    cur->pc = 0;
-    cur->ret = 0;
-    cur->stack = stack.GetTop() - argCount;
-
-    stack.SetBase(cur->stack);
-    locals.SetBase(cur->local);
+        p->base_ci = (CallInfo*)realloc(p->base_ci, sizeof(CallInfo) * p->size_ci);
+        p->ci = p->base_ci + offset;
+    }
 }
 
-void Process::Return() {
-    int retCount = 0;
-    Value retValue;
-    if (cur != NULL) {
-        retCount = cur->ret;
-        if (retCount > 0) {
-            retValue = *(stack.Pop());
-        }
+
+void prepare_call(Process* p, const IMethod* method, int arg) {
+    if (p->method != NULL) {
+        grow_ci(p);
+
+        p->ci->method = p->method;
+        p->ci->local = p->local.base - p->local.head;
+        p->ci->localCount = p->local.top - p->local.base;
+
+        p->ci->stack = p->stack.base - p->stack.head;
+        p->ci->stackCount = p->stack.top - p->stack.base - arg;
+        assert(p->ci->stackCount >= 0);
+
+        p->ci->pc = p->pc - p->method->GetInstruction(0);
+        p->ci->ret = p->ret;
+
+        p->ci++;
     }
 
-    if (frames.size() == 0) {
-        cur = NULL;
+    p->local.base = p->local.top;
+    p->stack.base = p->stack.top - arg;
+    p->method = method;
+    p->pc = method->GetInstruction(0);
+}
+
+static void Return(Process* p) {
+    if (p->ci == p->base_ci) {
+        p->method = 0;
         return;
     }
 
-    frames.pop();
+    Value* ret = p->stack.top - 1;
 
-    cur = frames.last();
+    p->ci--;
 
-    stack.Clear();
-    locals.Clear();
+    p->method = p->ci->method;
+    p->stack.base = p->stack.head + p->ci->stack;
+    p->stack.top = p->stack.base + p->ci->stackCount;
 
-    if (cur != NULL) {
-        stack.SetBase(cur->stack);
+    p->local.base = p->local.head + p->ci->local;
+    p->local.top = p->local.base + p->ci->localCount;
+    p->pc = p->method->GetInstruction(p->ci->pc);
 
-        if (retCount > 0) {
-            stack.Push(&retValue);
-        }
-
-        locals.SetBase(cur->local);
-    }
-}
-
-void Process::StoreLocal(int pos, Value * obj) {
-    if (locals.GetTop() <= pos) {
-        locals.SetTop(pos + 1);
+    if (p->ret > 0) {
+        p->stack.push(ret);
     }
 
-    locals.Set(pos, obj);
+    p->ret = p->ci->ret;
 }
 
-bool Process::Step() {
-    if (cur == NULL) {
+
+static void dump_stack(SimpleStack* stack) {
+    printf("---------\n");
+    char c[256];
+    for (Value* v = stack->top - 1; v >= stack->base; v--) {
+        printf("  %s\n", v->ToString(c));
+    }
+
+    printf("---------\n");
+}
+
+
+#define stack_push(stack, t)  do { Value v(t); stack->push(&v); } while(0)
+
+static bool step(Process* p) {
+    if (p->method == 0) {
         return false;
     }
 
-    const Method* method = cur->method;
-    IStack* stack = GetStack();
+    const Context* context = p->context;
+    const IMethod* method = p->method;
 
-    int& pc = cur->pc;
+    Code opcode = p->pc->opcode;
+    int64_t oprand = p->pc->oprand;
 
-    const Instruction * instruction = method->GetInstruction(pc);
+    SimpleStack* stack = &p->stack;
+    SimpleStack* local = &p->local;
 
-    Code opcode = instruction->opcode;
-    int64_t oprand = instruction->oprand;
+    // method->Dump(p, p->pc - method->GetInstruction(0));
+    // dump_stack(stack);
 
-    // method->Dump(this, pc);
+    Instruction*& pc = p->pc;
 
-    switch (instruction->opcode) {
+    switch (opcode) {
     case Code::Ret:
-        pc++; Return();
+        Return(p);
         break;
-    case Code::Nop: 
+    case Code::Nop:
         pc++;
         break;
     case Code::Break:
-        pc = (int)oprand;
+        pc = method->GetInstruction((int)oprand);
         break;
     case Code::Ldstr:
-        stack->Push(context->GetString((int)oprand)); pc++;
+        stack_push(stack, context->GetString((int)oprand)); pc++;
         break;
-    case Code::Call:
+    case Code::Call: {
         pc++;
-        CallMethod(oprand);
+        int ret = context->GetMethodByIndex(oprand - 1)->Begin(p);
+        p->ret = ret;
         break;
+    }
     case Code::Ldnull:
-        stack->Push(Value::Nil); pc++;
+        stack->push(&Value::Nil); pc++;
         break;
     case Code::Ldc_I4_M1:
-        stack->Push(Value((int)-1)); pc++;
+        stack_push(stack, -1); pc++;
         break;
     case Code::Ldc_I4_0:
-        stack->Push(Value((int)0)); pc++;
+        stack_push(stack, 0); pc++;
         break;
     case Code::Ldc_I4_1:
-        stack->Push(Value((int)1)); pc++;
+        stack_push(stack, 1); pc++;
         break;
     case Code::Ldc_I4_2:
-        stack->Push(Value((int)2)); pc++;
+        stack_push(stack, 2); pc++;
         break;
     case Code::Ldc_I4_3:
-        stack->Push(Value((int)3)); pc++;
+        stack_push(stack, 3); pc++;
         break;
     case Code::Ldc_I4_4:
-        stack->Push(Value((int)4)); pc++;
+        stack_push(stack, 4); pc++;
         break;
     case Code::Ldc_I4_5:
-        stack->Push(Value((int)5)); pc++;
+        stack_push(stack, 5); pc++;
         break;
     case Code::Ldc_I4_6:
-        stack->Push(Value((int)6)); pc++;
+        stack_push(stack, 6); pc++;
         break;
     case Code::Ldc_I4_7:
-        stack->Push(Value((int)7)); pc++;
+        stack_push(stack, 7); pc++;
         break;
     case Code::Ldc_I4_8:
-        stack->Push(Value((int)8)); pc++;
+        stack_push(stack, 8); pc++;
         break;
     case Code::Ldc_I4_S:
-        stack->Push((int)oprand); pc++;
+        stack_push(stack,(int)oprand); pc++;
         break;
     case Code::Ldc_I4:
-        stack->Push((int)oprand); pc++;
+        stack_push(stack, (int)oprand); pc++;
         break;
     case Code::Ldc_I8:
-        stack->Push((long)oprand); pc++;
+        stack_push(stack, (long)oprand); pc++;
         break;
     case Code::Ldc_R4:
-        stack->Push((float)(*(double*)(&oprand))); pc++;
+        stack_push(stack, (float)(*(double*)(&oprand))); pc++;
         break;
     case Code::Ldc_R8:
-        stack->Push(*(double*)(&oprand)); pc++;
+        stack_push(stack, *(double*)(&oprand)); pc++;
         break;
     case Code::Stloc_0:
-        StoreLocal(0, stack->Pop()); pc++;
+        store_local(local, 0, stack->pop()); pc++;
         break;
     case Code::Stloc_1:
-        StoreLocal(1, stack->Pop()); pc++;
+        store_local(local, 1, stack->pop()); pc++;
         break;
     case Code::Stloc_2:
-        StoreLocal(2, stack->Pop()); pc++;
+        store_local(local, 2, stack->pop()); pc++;
         break;
     case Code::Stloc_3:
-        StoreLocal(3, stack->Pop()); pc++;
+        store_local(local, 3, stack->pop()); pc++;
         break;
     case Code::Stloc_S:
-        StoreLocal((int)oprand, stack->Pop()); pc++;
+        store_local(local, (int)oprand, stack->pop()); pc++;
         break;
     case Code::Ldloc_0:
-        stack->Push(*locals[0]); pc++;
+        stack->push(local->get(0)); pc++;
         break;
     case Code::Ldloc_1:
-        stack->Push(*locals[1]); pc++;
+        stack->push(local->get(1)); pc++;
         break;
     case Code::Ldloc_2:
-        stack->Push(*locals[2]); pc++;
+        stack->push(local->get(2)); pc++;
         break;
     case Code::Ldloc_3:
-        stack->Push(*locals[3]); pc++;
+        stack->push(local->get(3)); pc++;
         break;
     case Code::Ldloc_S:
-        stack->Push(locals[(int)oprand]); pc++;
+        stack->push(local->get((int)oprand)); pc++;
         break;
     case Code::Br:
     case Code::Br_S:
-        pc = (int)oprand;
+        pc = method->GetInstruction(oprand);
         break;
     case Code::Pop:
-        stack->Pop(); pc++;
+        stack->pop(); pc++;
         break;
     case Code::Ldarg_0:
-        stack->Push(stack->Get(0)); pc++;
+        stack->push(stack->get(0)); pc++;
         break;
     case Code::Ldarg_1:
-        stack->Push(stack->Get(1)); pc++;
+        stack->push(stack->get(1)); pc++;
         break;
     case Code::Ldarg_2:
-        stack->Push(stack->Get(2)); pc++;
+        stack->push(stack->get(2)); pc++;
         break;
     case Code::Ldarg_3:
-        stack->Push(stack->Get(3)); pc++;
+        stack->push(stack->get(3)); pc++;
         break;
     case Code::Ldarg_S:
-        stack->Push(stack->Get((int)oprand)); pc++;
+        stack->push(stack->get((int)oprand)); pc++;
         break;
     case Code::Cgt: {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
-        stack->Push(v1->ToNumber() > v2->ToNumber() ? 1 : 0);
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack_push(stack, v1->ToNumber() > v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
@@ -215,17 +243,17 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::Ceq: {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
-        stack->Push(v1->ToNumber() == v2->ToNumber() ? 1 : 0);
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack_push(stack, v1->ToNumber() == v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
     case Code::Clt:
     {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
-        stack->Push(v1->ToNumber() < v2->ToNumber() ? 1 : 0);
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack_push(stack, v1->ToNumber() < v2->ToNumber() ? 1 : 0);
         pc++;
         break;
     }
@@ -234,8 +262,8 @@ bool Process::Step() {
         break;
     case Code::Brfalse:
     case Code::Brfalse_S:
-        if (stack->Pop()->IsZero()) {
-            pc = (int)oprand;
+        if (stack->pop()->IsZero()) {
+            pc = method->GetInstruction(oprand);
         }
         else {
             pc++;
@@ -243,8 +271,8 @@ bool Process::Step() {
         break;
     case Code::Brtrue:
     case Code::Brtrue_S:
-        if (!stack->Pop()->IsZero()) {
-            pc = (int)oprand;
+        if (!stack->pop()->IsZero()) {
+            pc = method->GetInstruction(oprand);
         }
         else {
             pc++;
@@ -253,75 +281,74 @@ bool Process::Step() {
     case Code::Blt:
     case Code::Blt_S:
     {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
         if (v1->ToNumber() < v2->ToNumber()) {
-            pc = (int)oprand;
+            pc = method->GetInstruction(oprand);
         }
         else {
             pc++;
         }
         break;
     }
-        break;
     case Code::Add: {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
-        stack->Push(v1->Add(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Add(v2)); pc++;
+        break;
     }
-                  break;
     case Code::Sub: {
-        Value* v2 = stack->Pop();
-        Value* v1 = stack->Pop();
-        stack->Push(v1->Sub(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Sub(v2)); pc++;
     }
                   break;
     case Code::Mul: {
-        Value* v2 = stack->Pop();
-        Value* v1 = stack->Pop();
-        stack->Push(v1->Mul(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Mul(v2)); pc++;
+        break;
     }
-                  break;
     case Code::Div: {
-        Value* v2 = stack->Pop();
-        Value* v1 = stack->Pop();
-        stack->Push(v1->Div(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Div(v2)); pc++;
         break;
     }
     case Code::Rem: {
-        Value* v2 = stack->Pop();
-        Value* v1 = stack->Pop();
-        stack->Push(v1->Rem(v2)); pc++;
-    }
-    break;
-    case Code::Neg:
-    {
-        stack->Push(stack->Pop()->Neg()); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Rem(v2)); pc++;
         break;
     }
-	case Code::Div_Un: {
+    case Code::Neg:
+    {
+        stack->push(stack->pop()->Neg()); pc++;
+        break;
+    }
+    case Code::Div_Un: {
         assert(false);
-		Value* v2 = stack->Pop();
-		Value* v1 = stack->Pop();
-		uint32_t u1 = v1->ToInterger();
-		uint32_t u2 = v2->ToInterger();
-		stack->Push((int)(u1 / u2)); pc++;
-	}
-		break;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        uint32_t u1 = v1->ToInterger();
+        uint32_t u2 = v2->ToInterger();
+        stack_push(stack, (int)(u1 / u2)); pc++;
+        break;
+    }
     case Code::Rem_Un:
         assert(false);
         break;
     case Code::And: {
-        Value* v2 = stack->Pop();
-        Value* v1 = stack->Pop();
-        stack->Push(v1->Add(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Add(v2)); pc++;
         break;
 
     }
     case Code::Or: {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
-        stack->Push(v1->Or(v2)); pc++;
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
+        stack->push(v1->Or(v2)); pc++;
         break;
     }
     case Code::Xor:
@@ -332,13 +359,13 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::Ldloca_S:
-        stack->Push(locals[(int)oprand]); pc++;
+        stack->push(local->get(oprand)); pc++;
         break;
     case Code::Ble_S: {
-        Value * v2 = stack->Pop();
-        Value * v1 = stack->Pop();
+        Value* v2 = stack->pop();
+        Value* v1 = stack->pop();
         if (v1->ToNumber() < v2->ToNumber()) {
-            pc = (int)oprand;
+            pc = method->GetInstruction(oprand);
         }
         else {
             pc++;
@@ -346,7 +373,7 @@ bool Process::Step() {
         break;
     }
     case Code::Dup:
-        stack->Push(stack->Pop()); pc++;
+        stack->push(stack->pop()); pc++;
         break;
     case Code::Jmp:
         assert(false);
@@ -510,14 +537,23 @@ bool Process::Step() {
     return true;
 }
 
-void Process::CallMethod(int64_t key)
-{
-    int ret = context->GetMethod(key)->Begin(this);
+void run(const Context* context, int64_t key) {
+    IMethod* m = context->GetMethod(key);
+    assert(m);
 
-    //cur pointer changed
+    Process p;
+    memset(&p, 0, sizeof(Process));
 
-    cur->ret = ret;
+    p.context = context;
+    p.base_ci = (CallInfo*)malloc(sizeof(CallInfo) * 4);
+    p.size_ci = 4;
+    p.ci = p.base_ci;
+
+    init_stack(&p.local, 4);
+    init_stack(&p.stack, 4);
+    p.pc = m->GetInstruction(0);
+
+    m->Begin(&p);
+
+    while (step(&p)) {};
 }
-
-
-#undef DEBUG_STEP

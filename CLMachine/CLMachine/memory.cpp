@@ -25,6 +25,12 @@ int unref(uint64_t key) {
 #define PTR_REF(ptr) (*(((uint32_t*)(ptr)) - 1))
 
 void* Alloc(void* ptr, size_t size, void* u) {
+	if (ptr) {
+		return realloc(ptr, size);
+	} else {
+		return malloc(size);
+	}
+/*
 	size = size + sizeof(uint32_t);
 	if (ptr == NULL) {
 		uint32_t * mem = (uint32_t*)malloc(size);
@@ -45,18 +51,22 @@ void* Alloc(void* ptr, size_t size, void* u) {
 	}
 
 	return new_ptr + 1;
+*/
 }
 
 
 void Free(void* ptr) {
-	free(PTR_HEAD(ptr));
+	free(ptr);
+
+	// free(PTR_HEAD(ptr));
 }
 
 void* Ref(void* ptr) {
-	PTR_REF(ptr)++;
+	// PTR_REF(ptr)++;
 	return ptr;
 }
 
 int Unref(void* ptr) {
-	return --PTR_REF(ptr);
+	return 1;
+	// return --PTR_REF(ptr);
 }

@@ -12,9 +12,10 @@ enum TableType
 
 
 Context::~Context() {
-    for (auto ite = method.begin(); ite != method.end(); ite++) {
+    for (MethodInfo* ite = methods; ite < methods + methodCount; ite++) {
         delete ite->second;
     }
+    free(methods);
 
     for (auto ite = strings.begin(); ite != strings.end(); ite++) {
         unref(*ite);
@@ -41,14 +42,23 @@ void Context::splitFullName(const std::string& fullname, std::string& Namespace,
 
 IMethod* Context::GetMethod(int64_t id)  const
 {
-    auto ite = method.find(id);
-    if (ite != method.end()) {
-        return ite->second;
+    for (MethodInfo * ite  = methods; ite < methods + methodCount; ite++) {
+        if (ite->first == id) {
+            return ite->second;
+        }
     }
 
     std::cerr << GetMemberName(id) << " not exists" << std::endl;
 
     return NULL;
+}
+
+IMethod* Context::GetMethodByIndex(int idx)  const {
+    return methods[idx].second;
+}
+
+std::string Context::GetMemberNameByIndex(int idx)  const {
+    return GetMemberName(methods[idx].first);
 }
 
 std::string Context::GetMemberName(int64_t key)  const {
@@ -85,11 +95,11 @@ void Context::Register(const std::string& fullName, IMethod* m) {
     Register(Namespace, TypeName, Name, m);
 }
 
-void Context::Register(const std::string& fullName, int (*func)(const Context* context, IStack* stack)) {
+void Context::Register(const std::string& fullName, int (*func)(Process* p)) {
     Register(fullName, new NativeMethod(func));
 }
 
-void Context::Register(std::string Namespace, std::string TypeName, std::string Name, int (*func)(const Context* context, IStack* stack)) {
+void Context::Register(std::string Namespace, std::string TypeName, std::string Name, int (*func)(Process* p)) {
     Register(Namespace, TypeName, Name, new NativeMethod(func));
 }
 
@@ -100,8 +110,17 @@ void Context::Register(std::string Namespace, std::string TypeName, std::string 
         return;
     }
 
-    assert(method.find(key) == method.end());
-    method[key] = m;
+    for (MethodInfo* ite = methods; ite < methods + methodCount; ite++) {
+        if (ite->first == key) {
+            delete ite->second;
+            ite->second = m;
+
+            return;
+        }
+    }
+
+    assert(false);
+    // method[key] = m;
 }
 
 
@@ -132,7 +151,7 @@ void Context::Read(std::istream& f) {
         }
 
         if (c == METHOD) {
-            ReadMethod(f);
+            ReadMethodTable(f);
         }
         else if (c == STRING) {
             ReadStringTable(f);
@@ -146,7 +165,20 @@ void Context::Read(std::istream& f) {
     }
 }
 
-void Context::ReadMethod(std::istream& f) {
+void Context::ReadMethodTable(std::istream& f) {
+    int count = ReadI32(f);
+
+    methods = (MethodInfo*)malloc(sizeof(MethodInfo) * count);
+    methodCount = count;
+
+    for (int i = 0; i < count; i++) {
+        Method* m = ReadMethod(f);
+        methods[i].first = m->GetKey();
+        methods[i].second = m;
+    }
+}
+
+Method* Context::ReadMethod(std::istream& f) {
     int64_t key = ReadI64(f);
     int32_t argCount = ReadI32(f);
 
@@ -162,7 +194,7 @@ void Context::ReadMethod(std::istream& f) {
 
     m->SetInstruction(instrctions, instructionCount);
 
-    method[m->GetKey()] = m;
+    return m;
 }
 
 int64_t Context::ReadI64(std::istream& f) {
@@ -209,7 +241,7 @@ void Context::ReadStringTable(std::istream& f) {
     for (int i = 0; i < count; i++) {
         size_t size = ReadI32(f);
 
-        char* c = new char[size + 1];
+        char* c = (char*)Alloc(0, size + 1, 0);
         f.read(c, size);
         c[size] = 0;
 
@@ -224,7 +256,7 @@ void Context::ReadBlobTable(std::istream& f) {
     for (int i = 0; i < count; i++) {
         int size = ReadI32(f);
 
-        char* c = new char[size];
+        char* c = (char*)Alloc(0, size, 0);
         f.read(c, size);
 
         assert(!f.fail());
@@ -288,29 +320,13 @@ std::vector<int> Context::GetSwitchArg(int index) const {
 }
 
 void Context::Dump() const {
-    for (auto ite = method.begin(); ite != method.end(); ite++) {
+    for (MethodInfo* ite = methods; ite < methods + methodCount; ite++) {
         std::cout << GetMemberName(ite->first) << std::endl;
     }
 }
 
-
 void Context::Run(const std::string& fullName, const std::vector<std::string>& args) const {
     int64_t key = GetMemberKey(fullName);
 
-
-    Process p(this);
-
-    IMethod* m = GetMethod(key);
-    IStack* stack = p.GetStack();
-
-    for (auto ite = args.begin(); ite != args.end(); ite++) {
-        Value v(ite->c_str());
-        stack->Push(&v);
-    }
-
-    m->Begin(&p);
-
-    // p.Start(m, (int)args.size());
-
-    while (p.Step()) {};
+    run(this, key);
 }

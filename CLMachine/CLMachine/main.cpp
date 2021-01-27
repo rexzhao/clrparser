@@ -9,8 +9,8 @@
 
 namespace System {
     namespace Console {
-        static int WriteLine(const Context* context, IStack* stack) {
-            Value * value = stack->Pop();
+        static int WriteLine(Process* p) {
+            Value * value = p->stack.pop();
             std::cout << value->ToStr() << std::endl;
             return 0;
         }
@@ -19,27 +19,26 @@ namespace System {
     static std::map<const char*, const char*> strs;
 
     namespace Int32 {
-        static int ToString(const Context* context, IStack* stack) {
-            Value * value = stack->Pop();
+        static int ToString(Process* p) {
+            Value * value = p->stack.pop();
 
             char data[32];
 
             size_t n = snprintf(data, 32, "%d", (int)value->ToInterger());
 
-            char* msg = new char[n + 1];
+            char* msg = (char*)Alloc(0, n + 1, 0);
             memcpy(msg, data, n + 1);
             msg[n] = 0;
 
-            Value v(msg);
-            stack->Push(&v);
+            Value v(msg); p->stack.push(&v);
 
             return 1;
         }
     };
 
     namespace Double {
-        static int ToString(const Context* context, IStack* stack) {
-            Value * value = stack->Pop();
+        static int ToString(Process* p) {
+            Value * value = p->stack.pop();
 
             char data[32];
 
@@ -49,17 +48,16 @@ namespace System {
             memcpy(msg, data, n + 1);
             msg[n] = 0;
 
-            Value v(msg);
-            stack->Push(&v);
+            Value v(msg); p->stack.push(&v);
 
             return 1;
         }
     };
 
     namespace String {
-        static int Concat(const Context* context, IStack* stack) {
-            Value* v2 = stack->Pop();
-            Value* v1 = stack->Pop();
+        static int Concat(Process* p) {
+            Value* v2 = p->stack.pop();
+            Value* v1 = p->stack.pop();
 
 
             size_t n1 = strlen(v1->ToStr());
@@ -71,9 +69,7 @@ namespace System {
             memcpy(msg + n1, v2->ToStr(), n2);
             msg[n1 + n2] = 0;
 
-            Value v(msg);
-            stack->Push(&v);
-
+            Value v(msg); p->stack.push(&v);
 
             return 1;
         }
@@ -92,7 +88,7 @@ int main(int argc, char* argv[])
 {
     Context c;
 
-    const char* filename = "../../CLRExport/CLRExport/bin/Debug/netcoreapp3.1/out.txt";
+    const char* filename = "../../CLRExport/CLRExport/bin/Release/netcoreapp3.1/out.txt";
     if (argc > 1) {
         filename = argv[1];
     }
@@ -106,11 +102,11 @@ int main(int argc, char* argv[])
     c.Register("System.Double::ToString", System::Double::ToString);
     c.Register("System.String::Concat", System::String::Concat);
 
-    auto s1 = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    auto s1 = clock();
     c.Run("TestExport.Test::Start");
-    auto s2 = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    auto s2 = clock();
 
-    std::cout << "cost " << s2 - s1 << " ms" << std::endl;
+    std::cout <<  (s2 - s1) * 1.0 / CLOCKS_PER_SEC  << std::endl;
 
     return 0;
 }

@@ -2,7 +2,7 @@
 
 #include <assert.h>
 #include <stdint.h>
-
+#include <stdlib.h>
 
 
 void* Alloc(void* ptr, size_t size, void * u);

@@ -13,16 +13,17 @@ int Method::Begin(Process* p)  const
 }
 
 
-void Method::AddInstruction(Code opcode, int64_t oprand) {
-    instructions.push_back(Instruction(opcode, oprand));
+void Method::SetInstruction(Instruction * instructions, int count) {
+    this->instructions = instructions;
+    this->instructinsCount = count;
 }
 
-Instruction Method::GetInstruction(int i) const
+Instruction* Method::GetInstruction(int i) const
 {
-    if (i < (int)instructions.size()) {
-        return instructions[i];
+    if (i < instructinsCount) {
+        return instructions + i;
     }
-    return Instruction(Code::Nop, 0);
+    return NULL;
 }
 
 
@@ -264,7 +265,7 @@ void Method::DumpInstruction(Process* process, const Instruction& instruction) c
 
 void Method::Dump(Process * process, int pc) const {
     std::cout << "=== " << process->GetContext()->GetMemberName(this->key) << " ===" << std::endl;
-    for (int i = 0; i < instructions.size(); i++) {
+    for (int i = 0; i < instructinsCount; i++) {
         printf("%s %4d ", (i == pc) ? "-> " : "   ", i);
         DumpInstruction(process, instructions[i]);
         printf("\n");

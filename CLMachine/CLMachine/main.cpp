@@ -45,7 +45,7 @@ namespace System {
 
             size_t n = snprintf(data, 32, "%lf", value->ToNumber());
 
-            char* msg = new char[n + 1];
+            char* msg = (char*)Alloc(0, n + 1, 0);
             memcpy(msg, data, n + 1);
             msg[n] = 0;
 
@@ -65,7 +65,7 @@ namespace System {
             size_t n1 = strlen(v1->ToStr());
             size_t n2 = strlen(v2->ToStr());
 
-            char* msg = new char[n1 + n2 + 1];
+            char* msg = (char*)Alloc(0, n1 + n2 + 1, 0);
 
             memcpy(msg, v1->ToStr(), n1);
             memcpy(msg + n1, v2->ToStr(), n2);

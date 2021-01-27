@@ -80,11 +80,14 @@ bool Process::Step() {
 
     int& pc = cur->pc;
 
-    Instruction instruction = method->GetInstruction(pc);
+    const Instruction * instruction = method->GetInstruction(pc);
+
+    Code opcode = instruction->opcode;
+    int64_t oprand = instruction->oprand;
 
     // method->Dump(this, pc);
 
-    switch (instruction.opcode) {
+    switch (instruction->opcode) {
     case Code::Ret:
         pc++; Return();
         break;
@@ -92,14 +95,14 @@ bool Process::Step() {
         pc++;
         break;
     case Code::Break:
-        pc = (int)instruction.oprand;
+        pc = (int)oprand;
         break;
     case Code::Ldstr:
-        stack->Push(context->GetString((int)instruction.oprand)); pc++;
+        stack->Push(context->GetString((int)oprand)); pc++;
         break;
     case Code::Call:
         pc++;
-        CallMethod(instruction.oprand);
+        CallMethod(oprand);
         break;
     case Code::Ldnull:
         stack->Push(Value::Nil); pc++;
@@ -135,19 +138,19 @@ bool Process::Step() {
         stack->Push(Value((int)8)); pc++;
         break;
     case Code::Ldc_I4_S:
-        stack->Push((int)instruction.oprand); pc++;
+        stack->Push((int)oprand); pc++;
         break;
     case Code::Ldc_I4:
-        stack->Push((int)instruction.oprand); pc++;
+        stack->Push((int)oprand); pc++;
         break;
     case Code::Ldc_I8:
-        stack->Push((long)instruction.oprand); pc++;
+        stack->Push((long)oprand); pc++;
         break;
     case Code::Ldc_R4:
-        stack->Push((float)(*(double*)(&instruction.oprand))); pc++;
+        stack->Push((float)(*(double*)(&oprand))); pc++;
         break;
     case Code::Ldc_R8:
-        stack->Push(*(double*)(&instruction.oprand)); pc++;
+        stack->Push(*(double*)(&oprand)); pc++;
         break;
     case Code::Stloc_0:
         StoreLocal(0, stack->Pop()); pc++;
@@ -162,7 +165,7 @@ bool Process::Step() {
         StoreLocal(3, stack->Pop()); pc++;
         break;
     case Code::Stloc_S:
-        StoreLocal((int)instruction.oprand, stack->Pop()); pc++;
+        StoreLocal((int)oprand, stack->Pop()); pc++;
         break;
     case Code::Ldloc_0:
         stack->Push(*locals[0]); pc++;
@@ -177,11 +180,11 @@ bool Process::Step() {
         stack->Push(*locals[3]); pc++;
         break;
     case Code::Ldloc_S:
-        stack->Push(locals[(int)instruction.oprand]); pc++;
+        stack->Push(locals[(int)oprand]); pc++;
         break;
     case Code::Br:
     case Code::Br_S:
-        pc = (int)instruction.oprand;
+        pc = (int)oprand;
         break;
     case Code::Pop:
         stack->Pop(); pc++;
@@ -199,7 +202,7 @@ bool Process::Step() {
         stack->Push(stack->Get(3)); pc++;
         break;
     case Code::Ldarg_S:
-        stack->Push(stack->Get((int)instruction.oprand)); pc++;
+        stack->Push(stack->Get((int)oprand)); pc++;
         break;
     case Code::Cgt: {
         Value * v2 = stack->Pop();
@@ -232,7 +235,7 @@ bool Process::Step() {
     case Code::Brfalse:
     case Code::Brfalse_S:
         if (stack->Pop()->IsZero()) {
-            pc = (int)instruction.oprand;
+            pc = (int)oprand;
         }
         else {
             pc++;
@@ -241,7 +244,7 @@ bool Process::Step() {
     case Code::Brtrue:
     case Code::Brtrue_S:
         if (!stack->Pop()->IsZero()) {
-            pc = (int)instruction.oprand;
+            pc = (int)oprand;
         }
         else {
             pc++;
@@ -253,7 +256,7 @@ bool Process::Step() {
         Value * v2 = stack->Pop();
         Value * v1 = stack->Pop();
         if (v1->ToNumber() < v2->ToNumber()) {
-            pc = (int)instruction.oprand;
+            pc = (int)oprand;
         }
         else {
             pc++;
@@ -329,13 +332,13 @@ bool Process::Step() {
         assert(false);
         break;
     case Code::Ldloca_S:
-        stack->Push(locals[(int)instruction.oprand]); pc++;
+        stack->Push(locals[(int)oprand]); pc++;
         break;
     case Code::Ble_S: {
         Value * v2 = stack->Pop();
         Value * v1 = stack->Pop();
         if (v1->ToNumber() < v2->ToNumber()) {
-            pc = (int)instruction.oprand;
+            pc = (int)oprand;
         }
         else {
             pc++;

@@ -34,11 +34,13 @@ public:
     Value(long v) { type = LONG; value.l = v; }
     Value(float v) { type = FLOAT; value.f = v; }
     Value(double v) { type = DOUBLE; value.d = v; }
-    Value(Object* v = 0) { type = OBJECT; value.o = v; }
-    Value(const char* v) { type = STRING;  value.s = v; }
+    Value(Object* v = 0) { type = OBJECT; value.o = ref(v); }
+    Value(const char* v) { type = STRING;  value.s = ref(v); }
 
     /*
     Value(const Value& v) {
+        Release();
+
         type = v.type;
         value = v.value;
 
@@ -51,6 +53,8 @@ public:
     }
 
     Value& operator = (const Value& v) {
+        Release();
+
         type = v.type;
         value = v.value;
 
@@ -65,22 +69,20 @@ public:
     }
 
     ~Value() {
-        Reset();
+        Release();
     }
-
-
-    void Reset() {
+    */
+    void Release() {
         if (type == OBJECT) {
             unref(value.o);
         }
         else if (type == STRING) {
-            unref_a(value.s);
+            unref(value.s);
         }
 
         type = OBJECT;
         value.o = 0;
     }
-    */
 
 
     int GetType() const {

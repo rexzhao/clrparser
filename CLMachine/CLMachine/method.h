@@ -39,15 +39,16 @@ struct Instruction {
 
 class Method : public Member, public IMethod {
     int argCount;
-    std::vector<Instruction> instructions;
+    Instruction * instructions;
+    int instructinsCount;
 
 public:
-    Method(int64_t key, int argCount) : Member(key) {
+    Method(int64_t key, int argCount) : Member(key), instructions(0), instructinsCount(0){
         this->argCount = argCount;
     }
 
-    void AddInstruction(Code opcode, int64_t oprand);
-    Instruction GetInstruction(int i) const;
+    void SetInstruction(Instruction* instructions, int count);
+    Instruction * GetInstruction(int i) const;
 
     virtual int Begin(Process* process)  const;
 

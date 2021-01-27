@@ -17,11 +17,11 @@ Context::~Context() {
     }
 
     for (auto ite = strings.begin(); ite != strings.end(); ite++) {
-        unref_a(*ite);
+        unref(*ite);
     }
 
     for (auto ite = blobs.begin(); ite != blobs.end(); ite++) {
-        unref_a(ite->first);
+        unref(ite->first);
     }
 }
 
@@ -153,12 +153,14 @@ void Context::ReadMethod(std::istream& f) {
     Method* m = new Method(key, argCount);
 
     int instructionCount = ReadI32(f);
+    Instruction* instrctions = (Instruction*)malloc(sizeof(Instruction) * instructionCount);
     for (int32_t i = 0; i < instructionCount; i++) {
-        Code opcode = (Code)ReadU8(f);
-        int64_t oprand = ReadI64(f);
+        instrctions[i].opcode = (Code)ReadU8(f);
+        instrctions[i].oprand = ReadI64(f);
 
-        m->AddInstruction(opcode, oprand);
     }
+
+    m->SetInstruction(instrctions, instructionCount);
 
     method[m->GetKey()] = m;
 }
